@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches: [main]
-    paths: ["VERSION", "JetsRustAdmin.cs", "Setup.cs", "icon.ico", ".github/workflows/release.yml"]
+    paths: ["VERSION", "items.txt", "JetsRustAdmin.cs", "Setup.cs", "icon.ico", ".github/workflows/release.yml"]
   workflow_dispatch:
 permissions:
   contents: write
@@ -34,7 +34,7 @@ jobs:
           foreach ($f in "JetsRustAdmin.cs","Setup.cs") {
             (Get-Content $f -Raw) -replace 'AssemblyVersion\("[^"]*"\)', "AssemblyVersion(`"$ver.0`")" -replace 'AssemblyFileVersion\("[^"]*"\)', "AssemblyFileVersion(`"$ver.0`")" -replace 'const string Version = "[^"]*"', "const string Version = `"$ver`"" | Set-Content $f -Encoding UTF8
           }
-          & $csc /nologo /target:winexe /optimize+ /win32icon:icon.ico /out:JetsRustAdmin.exe /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll /r:System.Security.dll JetsRustAdmin.cs
+          & $csc /nologo /target:winexe /optimize+ /win32icon:icon.ico /resource:items.txt,items.txt /out:JetsRustAdmin.exe /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll /r:System.Security.dll JetsRustAdmin.cs
           if ($LASTEXITCODE -ne 0) { exit 1 }
           & $csc /nologo /target:winexe /optimize+ /win32icon:icon.ico /out:JetsRustAdmin-Setup.exe /resource:JetsRustAdmin.exe,app.exe /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll Setup.cs
           if ($LASTEXITCODE -ne 0) { exit 1 }

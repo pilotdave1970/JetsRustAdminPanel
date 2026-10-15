@@ -22,8 +22,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Jets Rust Admin")]
 [assembly: AssemblyProduct("Jets Rust Admin")]
-[assembly: AssemblyVersion("2.0.3.0")]
-[assembly: AssemblyFileVersion("2.0.3.0")]
+[assembly: AssemblyVersion("2.1.0.0")]
+[assembly: AssemblyFileVersion("2.1.0.0")]
 
 namespace JetsRustAdmin
 {
@@ -54,6 +54,7 @@ namespace JetsRustAdmin
         public int MapMargin = 0;
         public string ThemeName = "Orange";
         public string GhTokenEnc = "";
+        public List<string> RecentItems = new List<string>();
         public static string MapDir { get { return Path.Combine(Dir, "maps"); } }
 
         public static string Dir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JetsRustAdmin"); } }
@@ -1519,6 +1520,339 @@ namespace JetsRustAdmin
         }
     }
 
+    // ------------------------------------------------------------------ item catalog + icons (Give item picker)
+    class ItemDef { public string Short, Name, Category; }
+
+    static class ItemCatalog
+    {
+        static List<ItemDef> items;
+        // Items come from the list built into the exe (items.txt, from github.com/SzyMig/Rust-item-list-JSON).
+        public static List<ItemDef> All
+        {
+            get
+            {
+                if (items != null) return items;
+                items = new List<ItemDef>();
+                try
+                {
+                    using (var st = Assembly.GetExecutingAssembly().GetManifestResourceStream("items.txt"))
+                    using (var sr = new StreamReader(st, Encoding.UTF8))
+                    {
+                        string line;
+                        while ((line = sr.ReadLine()) != null)
+                        {
+                            var p = line.Split('\t');
+                            if (p.Length >= 3 && p[0].Length > 0 && !p[0].StartsWith("#") && !p[1].StartsWith("#"))
+                                items.Add(new ItemDef { Short = p[0], Name = p[1], Category = p[2] });
+                        }
+                    }
+                }
+                catch { }
+                return items;
+            }
+        }
+        public static ItemDef Find(string shortname)
+        {
+            foreach (var i in All) if (string.Equals(i.Short, shortname, StringComparison.OrdinalIgnoreCase)) return i;
+            return null;
+        }
+    }
+
+    // Downloads official item icons from Facepunch's CDN on demand and caches them in %AppData%\JetsRustAdmin\icons.
+    static class IconCache
+    {
+        static readonly Dictionary<string, Image> mem = new Dictionary<string, Image>();
+        static readonly HashSet<string> failed = new HashSet<string>(), queued = new HashSet<string>();
+        static readonly Queue<string> queue = new Queue<string>();
+        static int workers;
+        public static event Action Loaded;
+        static string Dir { get { return Path.Combine(Cfg.Dir, "icons"); } }
+
+        // Returns the icon if it is ready; otherwise starts loading it and returns null.
+        public static Image Get(string shortname)
+        {
+            lock (mem)
+            {
+                Image img;
+                if (mem.TryGetValue(shortname, out img)) return img;
+                if (failed.Contains(shortname) || !queued.Add(shortname)) return null;
+                queue.Enqueue(shortname);
+                if (workers < 6) { workers++; ThreadPool.QueueUserWorkItem(delegate { Work(); }); }
+            }
+            return null;
+        }
+
+        static void Work()
+        {
+            while (true)
+            {
+                string s;
+                lock (mem) { if (queue.Count == 0) { workers--; return; } s = queue.Dequeue(); }
+                Image img = null;
+                try { img = Load(s); } catch { }
+                lock (mem) { if (img != null) mem[s] = img; else failed.Add(s); }
+                if (Loaded != null) try { Loaded(); } catch { }
+            }
+        }
+
+        static Image Load(string s)
+        {
+            string file = Path.Combine(Dir, s + ".png");
+            if (!File.Exists(file))
+            {
+                try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | (SecurityProtocolType)768 | SecurityProtocolType.Tls; } catch { }
+                var req = (HttpWebRequest)WebRequest.Create("https://files.facepunch.com/rust/item/" + Uri.EscapeDataString(s) + "_512.png");
+                req.UserAgent = "JetsRustAdmin/" + Updater.Current; req.Timeout = 15000;
+                byte[] data;
+                using (var resp = req.GetResponse()) using (var rs = resp.GetResponseStream()) using (var ms = new MemoryStream()) { rs.CopyTo(ms); data = ms.ToArray(); }
+                // store a small 96px copy so the cache stays light
+                using (var src = Image.FromStream(new MemoryStream(data)))
+                using (var small = Scale(src, 96))
+                {
+                    Directory.CreateDirectory(Dir);
+                    small.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            using (var fs = File.OpenRead(file)) using (var img = Image.FromStream(fs)) return new Bitmap(img);
+        }
+
+        static Bitmap Scale(Image src, int size)
+        {
+            var bmp = new Bitmap(size, size);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.SmoothingMode = SmoothingMode.AntiAlias; g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.Clear(Color.Transparent); g.DrawImage(src, new Rectangle(0, 0, size, size));
+            }
+            return bmp;
+        }
+    }
+
+    // Scrollable grid of item tiles (icon + name), drawn by hand so 1000+ items stay fast.
+    class ItemGrid : Panel
+    {
+        public List<ItemDef> Items = new List<ItemDef>();
+        public ItemDef Selected;
+        public event Action SelectionChanged, Activated;
+        const int TW = 104, TH = 112, Gap = 8;
+        int hot = -1;
+
+        public ItemGrid()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+            BackColor = Theme.Surface; AutoScroll = true;
+            Action repaint = delegate { try { if (IsHandleCreated) BeginInvoke((Action)Invalidate); } catch { } };
+            IconCache.Loaded += repaint;
+            Disposed += delegate { IconCache.Loaded -= repaint; };
+        }
+        int Cols { get { return Math.Max(1, (ClientSize.Width - Gap) / (TW + Gap)); } }
+        int LeftPad { get { return Math.Max(Gap, (ClientSize.Width - Cols * (TW + Gap) + Gap) / 2); } }
+
+        public void SetItems(List<ItemDef> list)
+        {
+            Items = list; hot = -1;
+            if (Selected != null && !list.Contains(Selected)) { Selected = null; if (SelectionChanged != null) SelectionChanged(); }
+            UpdateScroll(); AutoScrollPosition = new Point(0, 0); Invalidate();
+        }
+        void UpdateScroll() { int rows = (Items.Count + Cols - 1) / Cols; AutoScrollMinSize = new Size(0, Gap + rows * (TH + Gap)); }
+        protected override void OnResize(EventArgs e) { UpdateScroll(); base.OnResize(e); }
+
+        Rectangle TileRect(int i)
+        {
+            int c = i % Cols, r = i / Cols;
+            return new Rectangle(LeftPad + c * (TW + Gap), Gap + r * (TH + Gap) + AutoScrollPosition.Y, TW, TH);
+        }
+        int HitTest(Point p)
+        {
+            int c = (p.X - LeftPad) / (TW + Gap), r = (p.Y - AutoScrollPosition.Y - Gap) / (TH + Gap);
+            if (c < 0 || c >= Cols || p.X < LeftPad || p.Y - AutoScrollPosition.Y < Gap) return -1;
+            int i = r * Cols + c;
+            return i >= 0 && i < Items.Count && TileRect(i).Contains(p) ? i : -1;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics; g.Clear(BackColor); g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            if (Items.Count == 0)
+            {
+                using (var f = Theme.F(10f)) TextRenderer.DrawText(g, "No items match.", f, ClientRectangle, Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                return;
+            }
+            int first = Math.Max(0, (-AutoScrollPosition.Y - Gap) / (TH + Gap) * Cols);
+            int last = Math.Min(Items.Count - 1, first + (ClientSize.Height / (TH + Gap) + 2) * Cols);
+            using (var nameFont = Theme.F(8.25f))
+            using (var initFont = Theme.F(20f, FontStyle.Bold))
+                for (int i = first; i <= last; i++)
+                {
+                    var it = Items[i]; var r = TileRect(i);
+                    bool sel = it == Selected, hov = i == hot;
+                    using (var path = Gfx.Round(r, 10))
+                    {
+                        using (var br = new SolidBrush(sel ? Theme.AccentSoft : hov ? Theme.Hover : Theme.Surface2)) g.FillPath(br, path);
+                        using (var pen = new Pen(sel ? Theme.Accent : Theme.Border, sel ? 2f : 1f)) g.DrawPath(pen, path);
+                    }
+                    var ir = new Rectangle(r.X + (TW - 64) / 2, r.Y + 8, 64, 64);
+                    var img = IconCache.Get(it.Short);
+                    if (img != null) g.DrawImage(img, ir);
+                    else
+                    {
+                        using (var path = Gfx.Round(ir, 10)) using (var br = new SolidBrush(Theme.Input)) g.FillPath(br, path);
+                        TextRenderer.DrawText(g, it.Name.Length > 0 ? it.Name.Substring(0, 1).ToUpperInvariant() : "?", initFont, ir, Theme.Faint,
+                            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                    }
+                    TextRenderer.DrawText(g, it.Name, nameFont, new Rectangle(r.X + 4, r.Y + 74, TW - 8, 34), sel ? Theme.Text : Theme.Muted,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                }
+        }
+
+        protected override void OnScroll(ScrollEventArgs se) { base.OnScroll(se); Invalidate(); }
+        protected override void OnMouseWheel(MouseEventArgs e) { base.OnMouseWheel(e); Invalidate(); }
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            int h = HitTest(e.Location);
+            if (h != hot) { hot = h; Cursor = h >= 0 ? Cursors.Hand : Cursors.Default; Invalidate(); }
+            base.OnMouseMove(e);
+        }
+        protected override void OnMouseLeave(EventArgs e) { hot = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            Focus();
+            int h = HitTest(e.Location);
+            if (h >= 0) { Selected = Items[h]; Invalidate(); if (SelectionChanged != null) SelectionChanged(); }
+            base.OnMouseDown(e);
+        }
+        protected override void OnMouseDoubleClick(MouseEventArgs e)
+        {
+            if (HitTest(e.Location) >= 0 && Activated != null) Activated();
+            base.OnMouseDoubleClick(e);
+        }
+    }
+
+    // "Give item" window: search / category / recent, tiles with icons, amount, Give.
+    class GiveItemForm : Form
+    {
+        readonly TextBox search = new TextBox();
+        readonly ComboBox cat = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        readonly ItemGrid grid = new ItemGrid { Dock = DockStyle.Fill };
+        readonly NumericUpDown amount = new NumericUpDown { Minimum = 1, Maximum = 1000000, Value = 1, Width = 110, ThousandsSeparator = true };
+        readonly Label pick = new Label { AutoSize = false, AutoEllipsis = true, Font = Theme.F(10.5f, FontStyle.Bold), ForeColor = Theme.Text };
+        readonly Button give = new Button { Text = "Give", Width = 120, Height = 34, DialogResult = DialogResult.OK };
+        readonly List<string> recent;
+        public ItemDef Item { get { return grid.Selected; } }
+        public int Amount { get { return (int)amount.Value; } }
+
+        public GiveItemForm(string who, List<string> recentItems)
+        {
+            recent = recentItems ?? new List<string>();
+            Text = "Give item to " + who; StartPosition = FormStartPosition.CenterParent; ShowInTaskbar = false;
+            Font = Theme.F(9.5f); ClientSize = new Size(820, 620); MinimumSize = new Size(620, 460); MinimizeBox = false;
+
+            var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 52, Padding = new Padding(18, 14, 18, 0), WrapContents = false };
+            var sl = new Label { Text = "SEARCH", AutoSize = true, Font = Theme.F(7.75f, FontStyle.Bold), ForeColor = Theme.Muted, Margin = new Padding(0, 9, 8, 0) };
+            search.Width = 330; search.Margin = new Padding(0, 0, 18, 0);
+            var cl = new Label { Text = "CATEGORY", AutoSize = true, Font = Theme.F(7.75f, FontStyle.Bold), ForeColor = Theme.Muted, Margin = new Padding(0, 9, 8, 0) };
+            cat.Width = 190; cat.Margin = new Padding(0, 1, 0, 0);
+            cat.Items.Add("All items");
+            if (recent.Count > 0) cat.Items.Add("Recent");
+            foreach (var c in ItemCatalog.All.Select(i => i.Category).Distinct().OrderBy(x => x)) cat.Items.Add(c);
+            cat.SelectedIndex = recent.Count > 0 ? 1 : 0;
+            top.Controls.AddRange(new Control[] { sl, search, cl, cat });
+
+            var mid = new Panel { Dock = DockStyle.Fill, Padding = new Padding(18, 6, 18, 6) };
+            var frame = Theme.Framed(grid, null); frame.Padding = new Padding(4); frame.Dock = DockStyle.Fill;
+            mid.Controls.Add(frame);
+
+            var bottom = new Panel { Dock = DockStyle.Bottom, Height = 64, Padding = new Padding(18, 0, 18, 0) };
+            var preview = new PictureBox { Size = new Size(44, 44), Location = new Point(18, 10), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Theme.Bg };
+            pick.Location = new Point(72, 12); pick.Size = new Size(330, 22); pick.Text = "Pick an item";
+            var sub = new Label { Location = new Point(72, 35), AutoSize = true, ForeColor = Theme.Muted, Font = Theme.F(8.5f), Text = "Double-click an item to give it straight away" };
+            var al = new Label { Text = "AMOUNT", AutoSize = true, Font = Theme.F(7.75f, FontStyle.Bold), ForeColor = Theme.Muted, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            amount.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            give.Anchor = AnchorStyles.Top | AnchorStyles.Right; give.Enabled = false;
+            var cancel = new Button { Text = "Cancel", Width = 96, Height = 34, DialogResult = DialogResult.Cancel, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            bottom.Controls.AddRange(new Control[] { preview, pick, sub, al, amount, give, cancel });
+            Action place = delegate
+            {
+                int w = bottom.ClientSize.Width;
+                Control amt = amount.Parent is RoundHost ? amount.Parent : (Control)amount;   // the rounded frame, once themed
+                cancel.Location = new Point(w - 18 - cancel.Width, 15);
+                give.Location = new Point(cancel.Left - 8 - give.Width, 15);
+                amt.Location = new Point(give.Left - 18 - amt.Width, 16);
+                al.Location = new Point(amt.Left - al.PreferredWidth - 8, 25);
+                pick.Width = Math.Max(120, al.Left - pick.Left - 14);
+            };
+            bottom.Resize += delegate { place(); };
+            bottom.Paint += delegate (object s, PaintEventArgs pe) { using (var pen = new Pen(Theme.Border)) pe.Graphics.DrawLine(pen, 18, 0, bottom.Width - 18, 0); };
+
+            Controls.Add(mid); Controls.Add(bottom); Controls.Add(top);
+            AcceptButton = give; CancelButton = cancel;
+            Theme.Apply(this);
+            place();
+            HandleCreated += delegate { Theme.DarkTitle(this); };
+
+            search.TextChanged += delegate { Filter(); };
+            cat.SelectedIndexChanged += delegate { Filter(); };
+            grid.SelectionChanged += delegate
+            {
+                var it = grid.Selected; give.Enabled = it != null;
+                pick.Text = it == null ? "Pick an item" : it.Name + "   (" + it.Short + ")";
+                preview.Image = it == null ? null : IconCache.Get(it.Short);
+            };
+            IconCache.Loaded += IconArrived;
+            FormClosed += delegate { IconCache.Loaded -= IconArrived; };
+            grid.Activated += delegate { if (grid.Selected != null) { DialogResult = DialogResult.OK; Close(); } };
+            search.KeyDown += delegate (object s, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Down) { grid.Focus(); e.Handled = true; }
+
+            };
+            Shown += delegate { search.Focus(); };
+            this.preview = preview;
+            Filter();
+        }
+        readonly PictureBox preview;
+
+        // Enter: first press picks the top match, second press gives it (handled here because the
+        // window's default button would otherwise swallow Enter while nothing is picked yet).
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Enter && !(ActiveControl is Button))
+            {
+                if (grid.Selected != null) { DialogResult = DialogResult.OK; Close(); }
+                else if (grid.Items.Count > 0)
+                {
+                    grid.Selected = grid.Items[0]; grid.Invalidate(); give.Enabled = true;
+                    pick.Text = grid.Selected.Name + "   (" + grid.Selected.Short + ")"; preview.Image = IconCache.Get(grid.Selected.Short);
+                }
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        void IconArrived()
+        {
+            try { BeginInvoke((Action)delegate { if (grid.Selected != null && preview.Image == null) preview.Image = IconCache.Get(grid.Selected.Short); }); } catch { }
+        }
+
+        void Filter()
+        {
+            string q = search.Text.Trim().ToLowerInvariant();
+            string c = cat.SelectedItem as string ?? "All items";
+            IEnumerable<ItemDef> src;
+            if (c == "Recent" && q.Length > 0) c = "All items";   // typing a search always looks through every item
+            if (c == "Recent") src = recent.Select(s => ItemCatalog.Find(s)).Where(i => i != null);
+            else if (c == "All items") src = ItemCatalog.All.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase);
+            else src = ItemCatalog.All.Where(i => i.Category == c).OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase);
+            if (q.Length > 0)
+                // best matches first: exact name/shortname, then names starting with the search, then the rest
+                src = src.Where(i => i.Name.ToLowerInvariant().Contains(q) || i.Short.ToLowerInvariant().Contains(q))
+                         .OrderBy(i => i.Name.ToLowerInvariant() == q || i.Short.ToLowerInvariant() == q ? 0 : i.Name.ToLowerInvariant().StartsWith(q) ? 1 : 2)
+                         .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase);
+            grid.SetItems(src.ToList());
+        }
+    }
+
     // ------------------------------------------------------------------ main window
     class MainForm : Form
     {
@@ -2575,9 +2909,18 @@ namespace JetsRustAdmin
         async void ActGive()
         {
             var sel = SelPlayers(); if (sel.Count == 0) return;
-            string item = U.Ask("Give item", "Item shortname (e.g. rifle.ak, wood, scrap):", ""); if (string.IsNullOrWhiteSpace(item)) return;
-            string amt = U.Ask("Give item", "Amount:", "1"); if (string.IsNullOrWhiteSpace(amt)) return;
-            foreach (var p in sel) await Run("inventory.giveto " + p.Id + " " + item.Trim() + " " + amt.Trim());
+            string who = sel.Count == 1 ? sel[0].Name : sel.Count + " players";
+            string item; int amt;
+            using (var f = new GiveItemForm(who, cfg.RecentItems))
+            {
+                if (f.ShowDialog(this) != DialogResult.OK || f.Item == null) return;
+                item = f.Item.Short; amt = f.Amount;
+            }
+            if (cfg.RecentItems == null) cfg.RecentItems = new List<string>();
+            cfg.RecentItems.Remove(item); cfg.RecentItems.Insert(0, item);
+            if (cfg.RecentItems.Count > 24) cfg.RecentItems.RemoveRange(24, cfg.RecentItems.Count - 24);
+            cfg.Save();
+            foreach (var p in sel) await Run("inventory.giveto " + p.Id + " " + item + " " + amt);
         }
         async void ActTeleport()
         {
