@@ -1332,6 +1332,8 @@ namespace JetsRustAdmin
         public int Selected { get { return sel; } }
         public void SetStatus(bool ok, string text) { bar.Online = ok; bar.StatusText = text; bar.Invalidate(); }
         public event Action<string> ThemeChosen { add { bar.ThemeChosen += value; } remove { bar.ThemeChosen -= value; } }
+        public event Action UpdateClicked { add { bar.UpdateClicked += value; } remove { bar.UpdateClicked -= value; } }
+        public void SetUpdate(string text, bool available, bool busy) { bar.UpdateText = text; bar.UpdateAvailable = available; bar.UpdateBusy = busy; bar.Invalidate(); }
         public void AddPage(Page p)
         {
             p.Dock = DockStyle.Fill; host.Controls.Add(p); Pages.Add(p);
@@ -1355,6 +1357,10 @@ namespace JetsRustAdmin
         public bool Online;
         public string StatusText = "Offline";
         public event Action<string> ThemeChosen;
+        public event Action UpdateClicked;
+        public string UpdateText = "Check for updates";
+        public bool UpdateAvailable, UpdateBusy;
+        bool hoverUpdate;
         int hoverSwatch = -1;
         readonly ToolTip tip = new ToolTip();
         Image logo;
@@ -1374,6 +1380,7 @@ namespace JetsRustAdmin
             int n = Theme.ThemeNames.Length, size = 20, gap = (Width - 36 - n * size) / Math.Max(1, n - 1);
             return new Rectangle(18 + i * (size + gap), Height - 92, size, size);
         }
+        Rectangle UpdateRect { get { return new Rectangle(12, Height - 168, Width - 25, 38); } }
         int SwatchHit(Point p) { for (int i = 0; i < Theme.ThemeNames.Length; i++) { var r = SwatchRect(i); r.Inflate(3, 3); if (r.Contains(p)) return i; } return -1; }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -1415,6 +1422,22 @@ namespace JetsRustAdmin
                     TextRenderer.DrawText(g, pg.Text.Replace("&&", "&"), f, new Rectangle(r.X + tx, r.Y, r.Width - tx - 6, r.Height), c, tf);
             }
 
+            // update button
+            {
+                var ur = UpdateRect;
+                Color fill = UpdateAvailable ? (hoverUpdate ? Theme.AccentHover : Theme.Accent) : (hoverUpdate && !UpdateBusy ? Theme.Hover : Theme.Surface2);
+                Color fg = UpdateAvailable ? Theme.AccentInk : (UpdateBusy ? Theme.Muted : Theme.Text);
+                using (var path = Gfx.Round(ur, 10))
+                {
+                    using (var br = new SolidBrush(fill)) g.FillPath(br, path);
+                    using (var pen = new Pen(UpdateAvailable ? fill : Theme.BoxBorder)) g.DrawPath(pen, path);
+                }
+                int ux = ur.X + 14;
+                if (Gfx.HasIconFont) { Gfx.DrawIcon(g, UpdateAvailable ? "\uE896" : "\uE895", new Rectangle(ur.X + 10, ur.Y, 20, ur.Height), UpdateAvailable ? fg : Theme.Accent, 10f); ux = ur.X + 36; }
+                using (var f = Theme.F(9f, UpdateAvailable ? FontStyle.Bold : FontStyle.Regular))
+                    TextRenderer.DrawText(g, UpdateText, f, new Rectangle(ux, ur.Y, ur.Right - ux - 8, ur.Height), fg, tf);
+            }
+
             // theme colour buttons
             using (var f = Theme.F(7.75f, FontStyle.Bold))
                 TextRenderer.DrawText(g, "THEME  \u00B7  " + Theme.ThemeName.ToUpperInvariant(), f, new Point(18, Height - 118), Theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
@@ -1442,17 +1465,19 @@ namespace JetsRustAdmin
         protected override void OnMouseMove(MouseEventArgs e)
         {
             int h = HitTest(e.Location), sw = SwatchHit(e.Location);
-            if (h != hover || sw != hoverSwatch)
+            bool hu = UpdateRect.Contains(e.Location);
+            if (h != hover || sw != hoverSwatch || hu != hoverUpdate)
             {
-                hover = h;
+                hover = h; hoverUpdate = hu;
                 if (sw != hoverSwatch) { hoverSwatch = sw; tip.SetToolTip(this, sw >= 0 ? Theme.ThemeNames[sw] + " theme" : ""); }
-                Cursor = (sw >= 0 || (h >= 0 && owner.Pages[h].Enabled)) ? Cursors.Hand : Cursors.Default; Invalidate();
+                Cursor = (sw >= 0 || (hu && !UpdateBusy) || (h >= 0 && owner.Pages[h].Enabled)) ? Cursors.Hand : Cursors.Default; Invalidate();
             }
             base.OnMouseMove(e);
         }
-        protected override void OnMouseLeave(EventArgs e) { hover = -1; hoverSwatch = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseLeave(EventArgs e) { hover = -1; hoverSwatch = -1; hoverUpdate = false; Invalidate(); base.OnMouseLeave(e); }
         protected override void OnMouseDown(MouseEventArgs e)
         {
+            if (e.Button == MouseButtons.Left && UpdateRect.Contains(e.Location)) { if (!UpdateBusy && UpdateClicked != null) UpdateClicked(); base.OnMouseDown(e); return; }
             int sw = SwatchHit(e.Location);
             if (sw >= 0 && e.Button == MouseButtons.Left) { if (ThemeChosen != null) ThemeChosen(Theme.ThemeNames[sw]); base.OnMouseDown(e); return; }
             int h = HitTest(e.Location);
@@ -1506,7 +1531,7 @@ namespace JetsRustAdmin
         // connection bar
         TextBox txtHost, txtPort, txtPw;
         CheckBox chkRemember, chkAuto;
-        Button btnConnect, btnUpdate;
+        Button btnConnect;
         Label lblStatus;
         NavTabs tabs;
         Page tabDash, tabPlayers, tabMap, tabConsole, tabChat, tabBans, tabServer, tabPlugins;
@@ -1552,7 +1577,7 @@ namespace JetsRustAdmin
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
             var wa = Screen.PrimaryScreen.WorkingArea;
             Size = new Size(Math.Max(1000, Math.Min(1440, wa.Width - 40)), Math.Max(640, Math.Min(900, wa.Height - 40)));
-            MinimumSize = new Size(1000, 700);
+            MinimumSize = new Size(1000, 740);
             StartPosition = FormStartPosition.CenterScreen;
             U.WorldSize = cfg.WorldSize > 0 ? cfg.WorldSize : 4000f;
 
@@ -1664,21 +1689,22 @@ namespace JetsRustAdmin
             foot.Paint += delegate (object sender, PaintEventArgs pe) { using (var pen = new Pen(Theme.Border)) pe.Graphics.DrawLine(pen, 22, 0, foot.Width - 22, 0); };
             lblStatus.Margin = new Padding(0); lblStatus.Location = new Point(24, 10);
             foot.Controls.Add(lblStatus);
-            btnUpdate = Btn("Updates", delegate { CheckForUpdates(true); });
-            btnUpdate.AutoSize = false; btnUpdate.MinimumSize = new Size(0, 26); btnUpdate.Font = Theme.F(8.5f);
-            btnUpdate.Size = new Size(130, 26); btnUpdate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnUpdate.Location = new Point(foot.Width - 130 - 22, 5);
-            btnUpdate.Text = "Updates  v" + Updater.Current;
-            foot.Controls.Add(btnUpdate);
+            var lblVer = new Label { AutoSize = true, Text = "Jets Rust Admin  v" + Updater.Current, ForeColor = Theme.Muted, Font = Theme.F(8.5f), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            foot.Controls.Add(lblVer);
+            lblVer.Location = new Point(foot.Width - lblVer.PreferredWidth - 24, 10);
+            tabs.UpdateClicked += delegate { if (pendingUpdate != null) OfferUpdate(pendingUpdate); else CheckForUpdates(true); };
             RefillProfiles();
         }
 
         // ---------------------------------------------------------- updates
         bool updating;
+        Updater.Info pendingUpdate;
+        string IdleUpdateText { get { return "Check for updates"; } }
+
         void CheckForUpdates(bool manual)
         {
             if (updating) return;
-            updating = true; btnUpdate.Enabled = false; btnUpdate.Text = "Checking...";
+            updating = true; tabs.SetUpdate("Checking...", false, true);
             ThreadPool.QueueUserWorkItem(delegate
             {
                 Updater.Info up = null; string err = null;
@@ -1689,13 +1715,22 @@ namespace JetsRustAdmin
 
         void UpdateChecked(Updater.Info up, string err, bool manual)
         {
-            btnUpdate.Enabled = true; btnUpdate.Text = "Updates  v" + Updater.Current; updating = false;
+            updating = false;
+            pendingUpdate = up;
+            if (up != null) tabs.SetUpdate("Update to v" + up.Version, true, false);
+            else tabs.SetUpdate(IdleUpdateText, false, false);
             if (err != null) { if (manual) Dlg.Show("Could not check for updates:\n" + err); return; }
             if (up == null) { if (manual) Dlg.Show("You're on the latest version (v" + Updater.Current + ")."); return; }
+            OfferUpdate(up);
+        }
+
+        void OfferUpdate(Updater.Info up)
+        {
+            if (updating) return;
             string notes = string.IsNullOrWhiteSpace(up.Notes) ? "" : "\n\n" + up.Notes.Trim();
             if (notes.Length > 800) notes = notes.Substring(0, 800) + "...";
             if (!U.Confirm("Version " + up.Version + " is available (you have v" + Updater.Current + "). Download and install it now?" + notes)) return;
-            updating = true; btnUpdate.Enabled = false; btnUpdate.Text = "Updating...";
+            updating = true; tabs.SetUpdate("Updating...", false, true);
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string e2 = null;
@@ -1705,7 +1740,7 @@ namespace JetsRustAdmin
                     BeginInvoke((Action)delegate
                     {
                         if (e2 == null) { cfg.Save(); if (rc != null) rc.Close(); Environment.Exit(0); }
-                        else { updating = false; btnUpdate.Enabled = true; btnUpdate.Text = "Updates  v" + Updater.Current; Dlg.Show("Update failed:\n" + e2); }
+                        else { updating = false; tabs.SetUpdate("Update to v" + up.Version, true, false); Dlg.Show("Update failed:\n" + e2); }
                     });
                 }
                 catch { }
