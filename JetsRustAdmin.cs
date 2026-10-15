@@ -22,8 +22,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Jets Rust Admin")]
 [assembly: AssemblyProduct("Jets Rust Admin")]
-[assembly: AssemblyVersion("2.0.2.0")]
-[assembly: AssemblyFileVersion("2.0.2.0")]
+[assembly: AssemblyVersion("2.0.3.0")]
+[assembly: AssemblyFileVersion("2.0.3.0")]
 
 namespace JetsRustAdmin
 {
@@ -53,6 +53,7 @@ namespace JetsRustAdmin
         public string RmKeyEnc = "";
         public int MapMargin = 0;
         public string ThemeName = "Orange";
+        public string GhTokenEnc = "";
         public static string MapDir { get { return Path.Combine(Dir, "maps"); } }
 
         public static string Dir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JetsRustAdmin"); } }
@@ -1572,6 +1573,7 @@ namespace JetsRustAdmin
         {
             Text = "Jets Rust Admin";
             Theme.SetTheme(cfg.ThemeName);
+            Updater.Token = Cfg.Unprotect(cfg.GhTokenEnc);
             Font = Theme.F(9.25f);
             BackColor = Theme.Bg; ForeColor = Theme.Text;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
@@ -1683,6 +1685,11 @@ namespace JetsRustAdmin
             cmbProfile.Margin = new Padding(0, 1, 8, 2);
             btnConnect.Margin = new Padding(2, 0, 6, 2);
             btnUpdate.Margin = new Padding(16, 0, 0, 2);
+            var updMenu = new ContextMenuStrip();
+            updMenu.Items.Add("Set GitHub token...", null, delegate { if (SetGhToken()) CheckForUpdates(true); });
+            updMenu.Items.Add("Clear GitHub token", null, delegate { Updater.Token = ""; cfg.GhTokenEnc = ""; cfg.Save(); Dlg.Show("GitHub token cleared."); });
+            Theme.StyleMenu(updMenu);
+            btnUpdate.ContextMenuStrip = updMenu;
             var head = tabs.Header;
             head.Controls.Add(bar);
             bar.SizeChanged += delegate { head.Height = bar.Height + head.Padding.Vertical; };
@@ -1716,21 +1723,38 @@ namespace JetsRustAdmin
             updating = true; SetUpdateUi("Checking...", false, true);
             ThreadPool.QueueUserWorkItem(delegate
             {
-                Updater.Info up = null; string err = null;
-                try { up = Updater.Check(); } catch (Exception ex) { err = ex.Message; }
+                Updater.Info up = null; Exception err = null;
+                try { up = Updater.Check(); } catch (Exception ex) { err = ex; }
                 try { BeginInvoke((Action)delegate { UpdateChecked(up, err, manual); }); } catch { }
             });
         }
 
-        void UpdateChecked(Updater.Info up, string err, bool manual)
+        void UpdateChecked(Updater.Info up, Exception err, bool manual)
         {
             updating = false;
             pendingUpdate = up;
             if (up != null) SetUpdateUi("Update to v" + up.Version, true, false);
             else SetUpdateUi(IdleUpdateText, false, false);
-            if (err != null) { if (manual) Dlg.Show("Could not check for updates:\n" + err); return; }
+            if (err is UpdateAuthException)
+            {
+                // private repo: ask for (or replace) the token, then check again
+                if (manual && U.Confirm(err.Message + "\n\nSet a GitHub token now?") && SetGhToken()) CheckForUpdates(true);
+                return;
+            }
+            if (err != null) { if (manual) Dlg.Show("Could not check for updates:\n" + err.Message); return; }
             if (up == null) { if (manual) Dlg.Show("You're on the latest version (v" + Updater.Current + ")."); return; }
             OfferUpdate(up);
+        }
+
+        // Asks for a read-only GitHub token so updates can come from the private repo.
+        bool SetGhToken()
+        {
+            string t = U.Ask("GitHub token",
+                "Paste a GitHub token that can read " + Updater.Repository + ". Create one at github.com > Settings > Developer settings > Fine-grained tokens: Only select repositories = JetsRustAdminPanel, Permissions > Contents = Read-only. It is stored encrypted for your Windows user.",
+                "", true);
+            if (t == null || t.Trim().Length == 0) return false;
+            Updater.Token = t.Trim(); cfg.GhTokenEnc = Cfg.Protect(Updater.Token); cfg.Save();
+            return true;
         }
 
         void OfferUpdate(Updater.Info up)
@@ -2776,32 +2800,60 @@ namespace JetsRustAdmin
     }
 
     // Checks the GitHub repository's latest release and swaps in the new exe (same pattern as Jet's Server Messenger).
+    // GitHub refused the check: the repo is private (or the token is wrong/expired).
+    class UpdateAuthException : Exception
+    {
+        public readonly int Code;
+        public UpdateAuthException(int code, string msg) : base(msg) { Code = code; }
+    }
+
     static class Updater
     {
         public const string Repository = "pilotdave1970/JetsRustAdminPanel";
         public const string AssetName = "JetsRustAdmin.exe";
+        // Read-only GitHub token for the private repo (entered in the app, stored encrypted per Windows user).
+        public static string Token = "";
 
-        public class Info { public Version Version; public string Url; public string Notes; }
+        public class Info { public Version Version; public string Url; public string ApiUrl; public string Notes; }
 
         public static Version Current
         {
             get { Version v = Assembly.GetExecutingAssembly().GetName().Version; return new Version(v.Major, v.Minor, Math.Max(0, v.Build)); }
         }
 
-        static HttpWebRequest Req(string url)
+        static HttpWebRequest Req(string url, bool auth, string accept)
         {
             try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | (SecurityProtocolType)768 | SecurityProtocolType.Tls; } catch { }
             var r = (HttpWebRequest)WebRequest.Create(url);
             r.UserAgent = "JetsRustAdmin/" + Current; r.Timeout = 20000; r.ReadWriteTimeout = 60000; r.AllowAutoRedirect = true;
+            if (accept != null) r.Accept = accept;
+            if (auth && !string.IsNullOrEmpty(Token)) r.Headers["Authorization"] = "Bearer " + Token;
             return r;
         }
 
-        // Returns null when already up to date. Throws on network errors.
+        // Returns null when already up to date. Throws UpdateAuthException when GitHub refuses access, other exceptions on network errors.
         public static Info Check()
         {
             string json;
-            using (var resp = Req("https://api.github.com/repos/" + Repository + "/releases/latest").GetResponse())
-            using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8)) json = sr.ReadToEnd();
+            try
+            {
+                using (var resp = Req("https://api.github.com/repos/" + Repository + "/releases/latest", true, "application/vnd.github+json").GetResponse())
+                using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8)) json = sr.ReadToEnd();
+            }
+            catch (WebException we)
+            {
+                var hr = we.Response as HttpWebResponse;
+                int code = hr == null ? 0 : (int)hr.StatusCode;
+                if (code == 404 || code == 401 || code == 403)
+                {
+                    if (string.IsNullOrEmpty(Token))
+                        throw new UpdateAuthException(code, "The update repository is private, so GitHub needs a token to let the app see its releases.");
+                    if (code == 404)
+                        throw new UpdateAuthException(code, "GitHub can't find releases with the saved token. Check the token has access to " + Repository + " (Contents: Read-only), or that a release exists.");
+                    throw new UpdateAuthException(code, "GitHub rejected the saved token (HTTP " + code + "). It may have expired - set a new one.");
+                }
+                throw;
+            }
             var root = new JavaScriptSerializer().DeserializeObject(json) as Dictionary<string, object>;
             if (root == null || !root.ContainsKey("tag_name")) return null;
             Version latest;
@@ -2814,9 +2866,35 @@ namespace JetsRustAdmin
             {
                 var a = o as Dictionary<string, object>;
                 if (a != null && string.Equals(Convert.ToString(a["name"]), AssetName, StringComparison.OrdinalIgnoreCase))
-                    return new Info { Version = latest, Url = Convert.ToString(a["browser_download_url"]), Notes = root.ContainsKey("body") ? Convert.ToString(root["body"]) : "" };
+                    return new Info { Version = latest, Url = Convert.ToString(a["browser_download_url"]), ApiUrl = a.ContainsKey("url") ? Convert.ToString(a["url"]) : "",
+                        Notes = root.ContainsKey("body") ? Convert.ToString(root["body"]) : "" };
             }
             return null;
+        }
+
+        static void Download(Info up, string path)
+        {
+            HttpWebRequest req;
+            if (!string.IsNullOrEmpty(Token) && !string.IsNullOrEmpty(up.ApiUrl))
+            {
+                // Private repo: ask the API for the asset, then follow GitHub's redirect to the file without the token.
+                req = Req(up.ApiUrl, true, "application/octet-stream");
+                req.AllowAutoRedirect = false;
+                var resp = (HttpWebResponse)req.GetResponse();
+                int code = (int)resp.StatusCode;
+                if (code >= 300 && code < 400)
+                {
+                    string loc = resp.Headers["Location"]; resp.Close();
+                    if (string.IsNullOrEmpty(loc)) throw new IOException("GitHub did not return a download link.");
+                    req = Req(loc, false, "application/octet-stream");
+                    resp = (HttpWebResponse)req.GetResponse();
+                }
+                using (resp) using (var rs = resp.GetResponseStream()) using (var fs = File.Create(path)) rs.CopyTo(fs);
+                return;
+            }
+            using (var resp = Req(up.Url, false, null).GetResponse())
+            using (var rs = resp.GetResponseStream())
+            using (var fs = File.Create(path)) rs.CopyTo(fs);
         }
 
         // Downloads the new exe, renames the running one aside (Windows allows that), puts the new one in place and starts it.
@@ -2824,9 +2902,7 @@ namespace JetsRustAdmin
         {
             string exe = Application.ExecutablePath, old = exe + ".old";
             string tmp = Path.Combine(Path.GetTempPath(), "JetsRustAdmin-" + Guid.NewGuid().ToString("N") + ".exe");
-            using (var resp = Req(up.Url).GetResponse())
-            using (var rs = resp.GetResponseStream())
-            using (var fs = File.Create(tmp)) rs.CopyTo(fs);
+            Download(up, tmp);
             if (new FileInfo(tmp).Length < 100000) { try { File.Delete(tmp); } catch { } throw new IOException("The downloaded file looks incomplete."); }
             if (File.Exists(old)) { File.SetAttributes(old, FileAttributes.Normal); File.Delete(old); }
             File.Move(exe, old);
