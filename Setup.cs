@@ -189,7 +189,7 @@ class InstallForm : Form
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int a, ref int v, int s);
 
     static readonly Color bg = Color.FromArgb(11, 14, 19), text = Color.FromArgb(232, 238, 244), muted = Color.FromArgb(138, 151, 167);
-    static readonly Color accent = Color.FromArgb(47, 191, 143), accentHover = Color.FromArgb(78, 212, 166), surf = Color.FromArgb(31, 38, 48);
+    static readonly Color accent = Color.FromArgb(240, 128, 56), accentHover = Color.FromArgb(252, 152, 84), surf = Color.FromArgb(31, 38, 48);
     static readonly Color hoverC = Color.FromArgb(40, 49, 61), border = Color.FromArgb(44, 52, 64), input = Color.FromArgb(13, 17, 23);
 
     static GraphicsPath Round(RectangleF r, float rad)
@@ -216,7 +216,7 @@ class InstallForm : Form
                 using (var br = new SolidBrush(fill)) g.FillPath(br, path);
                 using (var pen = new Pen(primary ? fill : border)) g.DrawPath(pen, path);
             }
-            TextRenderer.DrawText(g, b.Text, b.Font, b.ClientRectangle, primary ? Color.FromArgb(6, 24, 18) : text,
+            TextRenderer.DrawText(g, b.Text, b.Font, b.ClientRectangle, primary ? Color.FromArgb(32, 14, 4) : text,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.HidePrefix);
         };
     }

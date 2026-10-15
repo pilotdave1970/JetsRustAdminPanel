@@ -713,11 +713,11 @@ namespace JetsRustAdmin
         public static readonly Color Text = Color.FromArgb(232, 238, 244);
         public static readonly Color Muted = Color.FromArgb(138, 151, 167);
         public static readonly Color Faint = Color.FromArgb(84, 95, 110);
-        public static readonly Color Accent = Color.FromArgb(47, 191, 143);
-        public static readonly Color AccentHover = Color.FromArgb(78, 212, 166);
-        public static readonly Color AccentDown = Color.FromArgb(36, 160, 120);
-        public static readonly Color AccentInk = Color.FromArgb(6, 24, 18);
-        public static readonly Color AccentSoft = Color.FromArgb(24, 58, 50);
+        public static readonly Color Accent = Color.FromArgb(240, 128, 56);
+        public static readonly Color AccentHover = Color.FromArgb(252, 152, 84);
+        public static readonly Color AccentDown = Color.FromArgb(206, 104, 40);
+        public static readonly Color AccentInk = Color.FromArgb(32, 14, 4);
+        public static readonly Color AccentSoft = Color.FromArgb(62, 36, 20);
         public static readonly Color Danger = Color.FromArgb(229, 83, 75);
         public static readonly Color DangerText = Color.FromArgb(255, 123, 114);
         public static readonly Color DangerSoft = Color.FromArgb(52, 28, 32);
@@ -725,7 +725,7 @@ namespace JetsRustAdmin
         public static readonly Color Ok = Color.FromArgb(63, 185, 80);
         public static readonly Color Info = Color.FromArgb(88, 166, 255);
         public static readonly Color RowAlt = Color.FromArgb(24, 30, 38);
-        public static readonly Color Select = Color.FromArgb(27, 74, 61);
+        public static readonly Color Select = Color.FromArgb(86, 48, 24);
 
         public const float RCard = 12f, RCtl = 8f;
         public const string IconFontName = "Segoe MDL2 Assets";
@@ -1355,7 +1355,7 @@ namespace JetsRustAdmin
             var lr = new Rectangle(18, 22, 40, 40);
             using (var path = Gfx.Round(lr, 11))
             {
-                using (var br = new LinearGradientBrush(lr, Color.FromArgb(52, 206, 156), Color.FromArgb(28, 128, 102), 45f)) g.FillPath(br, path);
+                using (var br = new LinearGradientBrush(lr, Color.FromArgb(250, 146, 70), Color.FromArgb(190, 86, 30), 45f)) g.FillPath(br, path);
                 if (logo != null) { var clip = g.Clip; g.SetClip(path); g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.DrawImage(logo, new Rectangle(lr.X + 4, lr.Y + 4, 32, 32)); g.Clip = clip; }
             }
             using (var f = Theme.F(11.5f, FontStyle.Bold)) TextRenderer.DrawText(g, "Jets Rust Admin", f, new Rectangle(68, 22, Width - 76, 22), Theme.Text, tf);
