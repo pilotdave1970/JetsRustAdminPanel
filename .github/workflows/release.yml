@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches: [main]
-    paths: ["VERSION", "JetsAdminPanel.cs", "Setup.cs", "icon.ico", ".github/workflows/release.yml"]
+    paths: ["VERSION", "JetsRustAdmin.cs", "Setup.cs", "icon.ico", ".github/workflows/release.yml"]
   workflow_dispatch:
 permissions:
   contents: write
@@ -31,16 +31,16 @@ jobs:
         run: |
           $ver = "${{ steps.v.outputs.ver }}"
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          foreach ($f in "JetsAdminPanel.cs","Setup.cs") {
+          foreach ($f in "JetsRustAdmin.cs","Setup.cs") {
             (Get-Content $f -Raw) -replace 'AssemblyVersion\("[^"]*"\)', "AssemblyVersion(`"$ver.0`")" -replace 'AssemblyFileVersion\("[^"]*"\)', "AssemblyFileVersion(`"$ver.0`")" -replace 'const string Version = "[^"]*"', "const string Version = `"$ver`"" | Set-Content $f -Encoding UTF8
           }
-          & $csc /nologo /target:winexe /optimize+ /win32icon:icon.ico /out:JetsAdminPanel.exe /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll /r:System.Security.dll JetsAdminPanel.cs
+          & $csc /nologo /target:winexe /optimize+ /win32icon:icon.ico /out:JetsRustAdmin.exe /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll /r:System.Security.dll JetsRustAdmin.cs
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          & $csc /nologo /target:winexe /optimize+ /win32icon:icon.ico /out:JetsAdminPanel-Setup.exe /resource:JetsAdminPanel.exe,app.exe /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll Setup.cs
+          & $csc /nologo /target:winexe /optimize+ /win32icon:icon.ico /out:JetsRustAdmin-Setup.exe /resource:JetsRustAdmin.exe,app.exe /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll Setup.cs
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Publish
         if: steps.v.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.v.outputs.tag }}" JetsAdminPanel.exe JetsAdminPanel-Setup.exe --target "${{ github.sha }}" --title "Jet's Admin Panel ${{ steps.v.outputs.tag }}" --generate-notes
+          gh release create "${{ steps.v.outputs.tag }}" JetsRustAdmin.exe JetsRustAdmin-Setup.exe --target "${{ github.sha }}" --title "Jets Rust Admin ${{ steps.v.outputs.tag }}" --generate-notes

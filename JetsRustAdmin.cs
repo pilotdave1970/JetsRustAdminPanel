@@ -1,4 +1,4 @@
-// Jet's Admin Panel for Rust - Windows desktop admin tool using WebRCON.
+// Jets Rust Admin - Windows desktop admin tool using WebRCON.
 // Single file, C# 5 compatible so it builds with the compiler that ships with Windows (see build.bat).
 using System;
 using System.Collections.Generic;
@@ -20,12 +20,12 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("Jet's Admin Panel")]
-[assembly: AssemblyProduct("Jet's Admin Panel")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyTitle("Jets Rust Admin")]
+[assembly: AssemblyProduct("Jets Rust Admin")]
+[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyFileVersion("2.0.0.0")]
 
-namespace JetsAdminPanel
+namespace JetsRustAdmin
 {
     // ------------------------------------------------------------------ config
     class Profile { public string Name = ""; public string Host = ""; public int Port = 28016; public string PwEnc = ""; }
@@ -54,11 +54,31 @@ namespace JetsAdminPanel
         public int MapMargin = 0;
         public static string MapDir { get { return Path.Combine(Dir, "maps"); } }
 
-        public static string Dir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JetsAdminPanel"); } }
+        public static string Dir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JetsRustAdmin"); } }
         static string FilePath { get { return Path.Combine(Dir, "config.json"); } }
+
+        static string OldDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JetsAdminPanel"); } }
+
+        // First run after the rename: bring over profiles, RustMaps key and cached maps from Jet's Admin Panel.
+        static void MigrateOld()
+        {
+            try
+            {
+                if (File.Exists(FilePath) || !Directory.Exists(OldDir)) return;
+                Directory.CreateDirectory(Dir);
+                foreach (string f in Directory.GetFiles(OldDir, "*", SearchOption.AllDirectories))
+                {
+                    string dest = Path.Combine(Dir, f.Substring(OldDir.Length).TrimStart('\\', '/'));
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                    if (!File.Exists(dest)) File.Copy(f, dest);
+                }
+            }
+            catch { }
+        }
 
         public static Cfg Load()
         {
+            MigrateOld();
             try { if (File.Exists(FilePath)) return new JavaScriptSerializer().Deserialize<Cfg>(File.ReadAllText(FilePath)); }
             catch { }
             return new Cfg();
@@ -176,11 +196,14 @@ namespace JetsAdminPanel
             using (var f = new Form())
             {
                 f.Text = title; f.FormBorderStyle = FormBorderStyle.FixedDialog; f.StartPosition = FormStartPosition.CenterParent;
-                f.MaximizeBox = false; f.MinimizeBox = false; f.ClientSize = new Size(380, 110); f.ShowInTaskbar = false;
-                var l = new Label { Text = label, Left = 12, Top = 12, Width = 356, Height = 32 };
-                var t = new TextBox { Left = 12, Top = 48, Width = 356, Text = def ?? "", UseSystemPasswordChar = pw };
-                var ok = new Button { Text = "OK", Left = 212, Top = 76, Width = 76, DialogResult = DialogResult.OK };
-                var cancel = new Button { Text = "Cancel", Left = 292, Top = 76, Width = 76, DialogResult = DialogResult.Cancel };
+                f.MaximizeBox = false; f.MinimizeBox = false; f.ShowInTaskbar = false;
+                var l = new Label { Text = label, Left = 20, Top = 18, Width = 384, AutoSize = false };
+                l.Height = Math.Max(20, TextRenderer.MeasureText(label, Theme.F(9.5f), new Size(384, 0), TextFormatFlags.WordBreak).Height + 2);
+                int ty = l.Bottom + 10;
+                var t = new TextBox { Left = 20, Top = ty, Width = 384, Text = def ?? "", UseSystemPasswordChar = pw };
+                var ok = new Button { Text = "OK", Left = 222, Top = ty + 50, Width = 88, Height = 32, DialogResult = DialogResult.OK };
+                var cancel = new Button { Text = "Cancel", Left = 316, Top = ty + 50, Width = 88, Height = 32, DialogResult = DialogResult.Cancel };
+                f.ClientSize = new Size(424, ty + 50 + 32 + 18);
                 f.Controls.AddRange(new Control[] { l, t, ok, cancel });
                 f.AcceptButton = ok; f.CancelButton = cancel;
                 f.Font = Theme.F(9.5f); Theme.Apply(f); f.HandleCreated += delegate { Theme.DarkTitle(f); };
@@ -295,7 +318,7 @@ namespace JetsAdminPanel
             var tcs = new TaskCompletionSource<string>();
             lock (pending) pending[id] = tcs;
             var payload = new Dictionary<string, object>();
-            payload["Identifier"] = id; payload["Message"] = cmd; payload["Name"] = "JetsAdminPanel";
+            payload["Identifier"] = id; payload["Message"] = cmd; payload["Name"] = "JetsRustAdmin";
             var bytes = Encoding.UTF8.GetBytes(U.ToJson(payload));
             await sendLock.WaitAsync();
             try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, cts.Token); }
@@ -421,20 +444,20 @@ namespace JetsAdminPanel
                         for (int i = 0; i < n; i++)
                         {
                             float cx = ox + i * cell + cell / 2f;
-                            if (cx > 0 && cx < Width)
+                            if (cx > 16 && cx < Width - 16)
                             {
                                 string t = i < 26 ? ((char)('A' + i)).ToString() : "A" + (char)('A' + (i - 26) % 26);
                                 var sz = g.MeasureString(t, f);
-                                g.FillRectangle(bk, cx - sz.Width / 2, 0, sz.Width, sz.Height);
-                                g.DrawString(t, f, br, cx - sz.Width / 2, 0);
+                                g.FillRectangle(bk, cx - sz.Width / 2, 5, sz.Width, sz.Height);
+                                g.DrawString(t, f, br, cx - sz.Width / 2, 5);
                             }
                             float cy = oy + i * cell + cell / 2f;
-                            if (cy > 0 && cy < Height)
+                            if (cy > 16 && cy < Height - 44)
                             {
                                 string t = i.ToString();
                                 var sz = g.MeasureString(t, f);
-                                g.FillRectangle(bk, 0, cy - sz.Height / 2, sz.Width, sz.Height);
-                                g.DrawString(t, f, br, 0, cy - sz.Height / 2);
+                                g.FillRectangle(bk, 6, cy - sz.Height / 2, sz.Width, sz.Height);
+                                g.DrawString(t, f, br, 6, cy - sz.Height / 2);
                             }
                         }
                     }
@@ -469,10 +492,11 @@ namespace JetsAdminPanel
             {
                 string info = coordText + (coordText.Length > 0 ? "   " : "") + "zoom " + zoom.ToString("0.0") + "x   players on map: " + Players.Count(p => p.HasPos);
                 var isz = g.MeasureString(info, f);
-                using (var path = Gfx.Round(new RectangleF(10, Height - 36, isz.Width + 12, 24), 6))
+                using (var path = Gfx.Round(new RectangleF(10, Height - 38, isz.Width + 14, 26), 13))
                 using (var br = new SolidBrush(Color.FromArgb(190, 13, 17, 23))) g.FillPath(br, path);
-                g.DrawString(info, f, Brushes.WhiteSmoke, 16, Height - 33);
+                g.DrawString(info, f, Brushes.WhiteSmoke, 17, Height - 34);
             }
+            Gfx.MaskCorners(g, ClientRectangle, Theme.RCard, Gfx.BackOf(this), Theme.Border);
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
@@ -559,19 +583,22 @@ namespace JetsAdminPanel
                 pts.Add(new PointF(x, y));
             }
             var area = new List<PointF>(pts); area.Add(new PointF(right, bottom)); area.Add(new PointF(left, bottom));
-            using (var br = new SolidBrush(Color.FromArgb(38, Theme.Accent))) g.FillPolygon(br, area.ToArray());
-            using (var pen = new Pen(Theme.Accent, 2f)) g.DrawLines(pen, pts.ToArray());
+            using (var br = new LinearGradientBrush(new RectangleF(0, top - 1, 10, bottom - top + 2), Color.FromArgb(80, Theme.Accent), Color.FromArgb(4, Theme.Accent), 90f))
+                g.FillPolygon(br, area.ToArray());
+            using (var pen = new Pen(Theme.Accent, 2.2f) { LineJoin = LineJoin.Round }) g.DrawLines(pen, pts.ToArray());
             var last = pts[pts.Count - 1];
+            using (var br = new SolidBrush(Color.FromArgb(60, Theme.Accent))) g.FillEllipse(br, last.X - 8, last.Y - 8, 16, 16);
             using (var br = new SolidBrush(Theme.Accent)) g.FillEllipse(br, last.X - 4, last.Y - 4, 8, 8);
         }
     }
 
-    // ------------------------------------------------------------------ dark theme
+    // ------------------------------------------------------------------ theme + rounded controls
     static class Gfx
     {
-        public static System.Drawing.Drawing2D.GraphicsPath Round(RectangleF r, float rad)
+        public static GraphicsPath Round(RectangleF r, float rad)
         {
-            var p = new System.Drawing.Drawing2D.GraphicsPath();
+            var p = new GraphicsPath();
+            rad = Math.Max(0.5f, Math.Min(rad, Math.Min(r.Width, r.Height) / 2f));
             float d = rad * 2;
             p.AddArc(r.X, r.Y, d, d, 180, 90);
             p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
@@ -579,6 +606,81 @@ namespace JetsAdminPanel
             p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
             p.CloseFigure();
             return p;
+        }
+        public static GraphicsPath Round(Rectangle r, float rad) { return Round(new RectangleF(r.X + 0.5f, r.Y + 0.5f, r.Width - 1f, r.Height - 1f), rad); }
+
+        // The solid colour behind a control (first ancestor with an opaque background).
+        public static Color BackOf(Control c)
+        {
+            for (Control p = c.Parent; p != null; p = p.Parent)
+                if (p.BackColor.A == 255) return p.BackColor;
+            return Theme.Bg;
+        }
+
+        // Paints over the square corners of a control so it reads as a rounded tile (anti-aliased).
+        public static void MaskCorners(Graphics g, Rectangle b, float rad, Color outside, Color border)
+        {
+            var old = g.SmoothingMode; g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var round = Round(b, rad))
+            using (var p = new GraphicsPath(FillMode.Alternate))
+            {
+                p.AddRectangle(new RectangleF(b.X - 2, b.Y - 2, b.Width + 4, b.Height + 4));
+                p.AddPath(round, false);
+                using (var br = new SolidBrush(outside)) g.FillPath(br, p);
+                if (border.A > 0) using (var pen = new Pen(border)) g.DrawPath(pen, round);
+            }
+            g.SmoothingMode = old;
+        }
+
+        public static Color Mix(Color a, Color b, float t)
+        {
+            return Color.FromArgb(255, (int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+        }
+
+        static bool? iconFont;
+        public static bool HasIconFont
+        {
+            get
+            {
+                if (iconFont == null)
+                {
+                    iconFont = false;
+                    try { foreach (var f in FontFamily.Families) if (f.Name == Theme.IconFontName) { iconFont = true; break; } } catch { }
+                }
+                return iconFont.Value;
+            }
+        }
+        // Draws a Segoe MDL2 / Fluent icon glyph centered in a rectangle.
+        public static void DrawIcon(Graphics g, string glyph, Rectangle r, Color c, float size)
+        {
+            if (string.IsNullOrEmpty(glyph) || !HasIconFont) return;
+            using (var f = new Font(Theme.IconFontName, size, FontStyle.Regular, GraphicsUnit.Point))
+                TextRenderer.DrawText(g, glyph, f, r, c, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+        }
+    }
+
+    // Dark context-menu renderer with rounded hover highlight.
+    class DarkRenderer : ToolStripProfessionalRenderer
+    {
+        public DarkRenderer() : base(new DarkColors()) { RoundedEdges = true; }
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            var g = e.Graphics; var r = new Rectangle(4, 1, e.Item.Width - 8, e.Item.Height - 2);
+            using (var br = new SolidBrush(Theme.Surface2)) g.FillRectangle(br, 0, 0, e.Item.Width, e.Item.Height);
+            if (e.Item.Selected && e.Item.Enabled)
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using (var path = Gfx.Round(r, 6)) using (var br = new SolidBrush(Theme.Hover)) g.FillPath(br, path);
+            }
+        }
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Enabled ? Theme.Text : Theme.Muted;
+            base.OnRenderItemText(e);
+        }
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+        {
+            using (var pen = new Pen(Theme.Border)) e.Graphics.DrawRectangle(pen, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
         }
     }
 
@@ -601,37 +703,55 @@ namespace JetsAdminPanel
 
     static class Theme
     {
-        public static readonly Color Bg = Color.FromArgb(13, 17, 23);
-        public static readonly Color Surface = Color.FromArgb(22, 27, 34);
-        public static readonly Color Surface2 = Color.FromArgb(33, 40, 51);
-        public static readonly Color Input = Color.FromArgb(10, 14, 19);
-        public static readonly Color Border = Color.FromArgb(48, 56, 68);
-        public static readonly Color Hover = Color.FromArgb(42, 51, 64);
-        public static readonly Color Text = Color.FromArgb(230, 237, 243);
-        public static readonly Color Muted = Color.FromArgb(139, 152, 168);
+        public static readonly Color Bg = Color.FromArgb(11, 14, 19);
+        public static readonly Color Surface = Color.FromArgb(20, 25, 32);
+        public static readonly Color Surface2 = Color.FromArgb(31, 38, 48);
+        public static readonly Color Input = Color.FromArgb(13, 17, 23);
+        public static readonly Color Border = Color.FromArgb(44, 52, 64);
+        public static readonly Color Hover = Color.FromArgb(40, 49, 61);
+        public static readonly Color Text = Color.FromArgb(232, 238, 244);
+        public static readonly Color Muted = Color.FromArgb(138, 151, 167);
+        public static readonly Color Faint = Color.FromArgb(84, 95, 110);
         public static readonly Color Accent = Color.FromArgb(47, 191, 143);
-        public static readonly Color AccentHover = Color.FromArgb(80, 214, 168);
+        public static readonly Color AccentHover = Color.FromArgb(78, 212, 166);
+        public static readonly Color AccentDown = Color.FromArgb(36, 160, 120);
+        public static readonly Color AccentInk = Color.FromArgb(6, 24, 18);
+        public static readonly Color AccentSoft = Color.FromArgb(24, 58, 50);
         public static readonly Color Danger = Color.FromArgb(229, 83, 75);
         public static readonly Color DangerText = Color.FromArgb(255, 123, 114);
+        public static readonly Color DangerSoft = Color.FromArgb(52, 28, 32);
         public static readonly Color Warn = Color.FromArgb(227, 179, 65);
         public static readonly Color Ok = Color.FromArgb(63, 185, 80);
         public static readonly Color Info = Color.FromArgb(88, 166, 255);
-        public static readonly Color RowAlt = Color.FromArgb(18, 23, 30);
-        public static readonly Color Select = Color.FromArgb(30, 78, 66);
+        public static readonly Color RowAlt = Color.FromArgb(24, 30, 38);
+        public static readonly Color Select = Color.FromArgb(27, 74, 61);
+
+        public const float RCard = 12f, RCtl = 8f;
+        public const string IconFontName = "Segoe MDL2 Assets";
 
         public static Font F(float size, FontStyle st) { return new Font("Segoe UI", size, st); }
         public static Font F(float size) { return new Font("Segoe UI", size, FontStyle.Regular); }
 
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] static extern int SetWindowTheme(IntPtr hWnd, string app, string idList);
         [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int val, int size);
-        static bool nativeOk = true;
+        static bool nativeOk = Environment.OSVersion.Platform == PlatformID.Win32NT;
 
+        static int Ref(Color c) { return c.R | (c.G << 8) | (c.B << 16); }
+        static void Dwm(IntPtr h, int attr, int v) { try { DwmSetWindowAttribute(h, attr, ref v, 4); } catch { nativeOk = false; } }
+
+        // Dark title bar, plus on Windows 11: rounded window corners and a caption/border that match the app.
         public static void DarkTitle(Form f)
         {
             if (!nativeOk) return;
             try { int v = 1; if (DwmSetWindowAttribute(f.Handle, 20, ref v, 4) != 0) DwmSetWindowAttribute(f.Handle, 19, ref v, 4); }
-            catch { nativeOk = false; }
+            catch { nativeOk = false; return; }
+            Dwm(f.Handle, 33, 2);              // DWMWA_WINDOW_CORNER_PREFERENCE = round
+            Dwm(f.Handle, 35, Ref(Surface));   // caption colour
+            Dwm(f.Handle, 34, Ref(Border));    // border colour
+            Dwm(f.Handle, 36, Ref(Text));      // caption text colour
         }
+        public static void RoundPopup(IntPtr h) { if (nativeOk) Dwm(h, 33, 3); }   // small rounded corners for menus
+
         static void NativeTheme(Control c, string name)
         {
             if (!nativeOk) return;
@@ -644,20 +764,22 @@ namespace JetsAdminPanel
             try { typeof(Control).GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(c, true, null); } catch { }
         }
 
-        static readonly string[] DangerButtons = { "Kick", "Ban", "Quit now", "Unban selected", "Delete", "Unload selected", "Remove role", "Restart", "Disconnect", "Reload ALL" };
-        static readonly string[] PrimaryButtons = { "Connect", "Install", "Fetch map from RustMaps", "Apply && save", "Send to all", "Save profile", "OK", "Save", "Yes", "Send as server" };
+        static readonly string[] DangerButtons = { "Kick", "Ban", "Quit now", "Unban selected", "Delete", "Unload selected", "Remove role", "Restart", "Disconnect", "Reload ALL", "Revoke", "Clear image" };
+        static readonly string[] PrimaryButtons = { "Connect", "Install", "Fetch map from RustMaps", "Apply && save", "Send to all", "Save profile", "OK", "Save", "Yes", "Send as server", "Grant" };
 
         public static void Apply(Control root)
         {
             Style(root);
-            foreach (Control k in root.Controls) Apply(k);
+            var kids = new Control[root.Controls.Count];
+            root.Controls.CopyTo(kids, 0);
+            foreach (Control k in kids) Apply(k);
         }
 
         static void Style(Control c)
         {
             Form f = c as Form;
             if (f != null) { f.BackColor = Bg; f.ForeColor = Text; return; }
-            if (c is Page || c is Card || c is NavTabs || c is NavBar || c is MapControl || c is SparkPanel) return;
+            if (c is Page || c is Card || c is NavTabs || c is NavBar || c is MapControl || c is SparkPanel || c is RoundHost || c is RoundFlow) return;
 
             Button b = c as Button;
             if (b != null)
@@ -666,17 +788,17 @@ namespace JetsAdminPanel
                 StyleButton(b, kind); return;
             }
             RichTextBox rt = c as RichTextBox;
-            if (rt != null) { rt.BackColor = Input; rt.ForeColor = Text; rt.BorderStyle = BorderStyle.None; DoubleBuffer(rt); NativeTheme(rt, "DarkMode_Explorer"); return; }
+            if (rt != null) { rt.BackColor = Input; rt.ForeColor = Text; rt.BorderStyle = BorderStyle.None; DoubleBuffer(rt); NativeTheme(rt, "DarkMode_Explorer"); Wrap(rt); return; }
             TextBox tb = c as TextBox;
-            if (tb != null) { tb.BackColor = Input; tb.ForeColor = Text; tb.BorderStyle = BorderStyle.FixedSingle; if (tb.Multiline) NativeTheme(tb, "DarkMode_Explorer"); return; }
+            if (tb != null) { tb.BackColor = Input; tb.ForeColor = Text; tb.BorderStyle = BorderStyle.None; if (tb.Multiline) NativeTheme(tb, "DarkMode_Explorer"); Wrap(tb); return; }
             ComboBox cb = c as ComboBox;
-            if (cb != null) { cb.FlatStyle = FlatStyle.Flat; cb.BackColor = Input; cb.ForeColor = Text; NativeTheme(cb, "DarkMode_CFD"); return; }
+            if (cb != null) { cb.BackColor = Input; cb.ForeColor = Text; ComboSkin.Attach(cb); NativeTheme(cb, "DarkMode_CFD"); return; }
             NumericUpDown nu = c as NumericUpDown;
-            if (nu != null) { nu.BackColor = Input; nu.ForeColor = Text; nu.BorderStyle = BorderStyle.FixedSingle; NativeTheme(nu, "DarkMode_Explorer"); return; }
+            if (nu != null) { nu.BackColor = Input; nu.ForeColor = Text; nu.BorderStyle = BorderStyle.None; NativeTheme(nu, "DarkMode_Explorer"); Wrap(nu); return; }
             CheckBox ck = c as CheckBox;
-            if (ck != null) { ck.FlatStyle = FlatStyle.Flat; ck.ForeColor = Text; ck.Cursor = Cursors.Hand; return; }
+            if (ck != null) { ToggleSkin.Attach(ck); return; }
             RadioButton rb = c as RadioButton;
-            if (rb != null) { rb.FlatStyle = FlatStyle.Flat; rb.ForeColor = Text; rb.Cursor = Cursors.Hand; return; }
+            if (rb != null) { RadioSkin.Attach(rb); return; }
             Label l = c as Label;
             if (l != null)
             {
@@ -687,46 +809,68 @@ namespace JetsAdminPanel
             }
         }
 
+        // Moves an input into a rounded frame that takes its place in the layout.
+        public static RoundHost Wrap(Control c)
+        {
+            Control parent = c.Parent;
+            if (parent == null || parent is RoundHost) return null;
+            int idx = parent.Controls.GetChildIndex(c);
+            var cell = parent is TableLayoutPanel ? ((TableLayoutPanel)parent).GetPositionFromControl(c) : new TableLayoutPanelCellPosition(-1, -1);
+            DockStyle dock = c.Dock; AnchorStyles anchor = c.Anchor; Padding margin = c.Margin; Point loc = c.Location; Size size = c.Size;
+            parent.SuspendLayout();
+            var host = new RoundHost(c);
+            bool single = host.Single;
+            host.Dock = dock; host.Anchor = anchor; host.Margin = margin; host.Location = loc;
+            host.Size = (dock == DockStyle.Fill || !single) ? size : new Size(size.Width, 32);
+            parent.Controls.Add(host);
+            parent.Controls.SetChildIndex(host, idx);
+            var tlp = parent as TableLayoutPanel;
+            if (tlp != null) tlp.SetCellPosition(host, cell);
+            parent.ResumeLayout(true);
+            return host;
+        }
+
         public static void StyleButton(Button b, string kind)
         {
-            b.FlatStyle = FlatStyle.Flat; b.UseVisualStyleBackColor = false; b.Cursor = Cursors.Hand;
-            b.MinimumSize = new Size(0, 30);
-            var fa = b.FlatAppearance; fa.BorderSize = 1;
-            if (kind == "primary")
-            {
-                b.BackColor = Accent; b.ForeColor = Color.FromArgb(6, 24, 18); fa.BorderColor = Accent;
-                fa.MouseOverBackColor = AccentHover; fa.MouseDownBackColor = Accent;
-            }
-            else if (kind == "danger")
-            {
-                b.BackColor = Surface2; b.ForeColor = DangerText; fa.BorderColor = Color.FromArgb(104, 52, 52);
-                fa.MouseOverBackColor = Color.FromArgb(66, 34, 38); fa.MouseDownBackColor = Color.FromArgb(90, 40, 44);
-            }
-            else
-            {
-                b.BackColor = Surface2; b.ForeColor = Text; fa.BorderColor = Border;
-                fa.MouseOverBackColor = Hover; fa.MouseDownBackColor = Border;
-            }
+            if (b.MinimumSize.Height == 0) b.MinimumSize = new Size(b.MinimumSize.Width, 32);
+            ButtonSkin.Attach(b, kind);
         }
 
         public static void StyleMenu(ContextMenuStrip m)
         {
-            m.Renderer = new ToolStripProfessionalRenderer(new DarkColors());
-            m.BackColor = Surface2; m.ForeColor = Text; m.ShowImageMargin = false;
-            foreach (ToolStripItem i in m.Items) i.ForeColor = Text;
+            m.Renderer = new DarkRenderer();
+            m.BackColor = Surface2; m.ForeColor = Text; m.ShowImageMargin = false; m.Padding = new Padding(2, 4, 2, 4);
+            foreach (ToolStripItem i in m.Items) { i.ForeColor = Text; i.Padding = new Padding(6, 4, 6, 4); }
+            m.HandleCreated += delegate { RoundPopup(m.Handle); };
+        }
+
+        // Rounded "pill" rows for owner-drawn lists.
+        static void PaintRow(Graphics g, Rectangle cell, Rectangle row, Color bg, Color surface)
+        {
+            using (var br = new SolidBrush(surface)) g.FillRectangle(br, cell);
+            if (bg.ToArgb() == surface.ToArgb()) return;
+            var clip = g.Clip; g.SetClip(cell);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var path = Gfx.Round(row, 7)) using (var br = new SolidBrush(bg)) g.FillPath(br, path);
+            g.Clip = clip;
         }
 
         public static void StyleListBox(ListBox lb)
         {
             lb.BorderStyle = BorderStyle.None; lb.BackColor = Surface; lb.ForeColor = Text;
-            lb.DrawMode = DrawMode.OwnerDrawFixed; lb.ItemHeight = 28;
+            lb.DrawMode = DrawMode.OwnerDrawFixed; lb.ItemHeight = 32;
+            int hot = -1;
+            lb.MouseMove += delegate (object s, MouseEventArgs e) { int h = lb.IndexFromPoint(e.Location); if (h != hot) { hot = h; lb.Invalidate(); } };
+            lb.MouseLeave += delegate { hot = -1; lb.Invalidate(); };
             lb.DrawItem += delegate (object s, DrawItemEventArgs e)
             {
-                if (e.Index < 0) return;
+                if (e.Index < 0) { using (var br = new SolidBrush(Surface)) e.Graphics.FillRectangle(br, e.Bounds); return; }
                 bool sel = (e.State & DrawItemState.Selected) != 0;
-                using (var br = new SolidBrush(sel ? Select : (e.Index % 2 == 1 ? RowAlt : Surface))) e.Graphics.FillRectangle(br, e.Bounds);
+                Color bg = sel ? Select : (e.Index == hot ? Hover : Surface);
+                var row = new Rectangle(e.Bounds.X + 2, e.Bounds.Y + 2, e.Bounds.Width - 4, e.Bounds.Height - 4);
+                PaintRow(e.Graphics, e.Bounds, row, bg, Surface);
                 TextRenderer.DrawText(e.Graphics, lb.GetItemText(lb.Items[e.Index]), lb.Font,
-                    new Rectangle(e.Bounds.X + 8, e.Bounds.Y, e.Bounds.Width - 10, e.Bounds.Height), Text,
+                    new Rectangle(e.Bounds.X + 12, e.Bounds.Y, e.Bounds.Width - 16, e.Bounds.Height), Text,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             };
             DoubleBuffer(lb); NativeTheme(lb, "DarkMode_Explorer");
@@ -736,7 +880,7 @@ namespace JetsAdminPanel
         {
             int n = lv.Columns.Count; if (n == 0) return;
             int sum = 0; for (int i = 0; i < n - 1; i++) sum += lv.Columns[i].Width;
-            int w = lv.ClientSize.Width - sum - 24;
+            int w = lv.ClientSize.Width - sum - 20;
             if (w > 80 && lv.Columns[n - 1].Width != w) lv.Columns[n - 1].Width = w;
         }
 
@@ -744,67 +888,388 @@ namespace JetsAdminPanel
         {
             lv.OwnerDraw = true; lv.GridLines = false; lv.BorderStyle = BorderStyle.None; lv.BackColor = Surface; lv.ForeColor = Text;
             lv.FullRowSelect = true; lv.HideSelection = false;
-            lv.SmallImageList = new ImageList { ImageSize = new Size(1, 30) };
+            lv.SmallImageList = new ImageList { ImageSize = new Size(1, 34) };
             DoubleBuffer(lv); NativeTheme(lv, "DarkMode_Explorer");
             const TextFormatFlags flags = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+            ListViewItem hot = null;
+            lv.MouseMove += delegate (object s, MouseEventArgs e)
+            {
+                var h = lv.GetItemAt(e.X, e.Y);
+                if (h == hot) return;
+                if (hot != null && hot.ListView == lv) lv.Invalidate(hot.Bounds);
+                hot = h;
+                if (hot != null) lv.Invalidate(hot.Bounds);
+            };
+            lv.MouseLeave += delegate { if (hot != null && hot.ListView == lv) lv.Invalidate(hot.Bounds); hot = null; };
             lv.DrawColumnHeader += delegate (object s, DrawListViewColumnHeaderEventArgs e)
             {
-                using (var br = new SolidBrush(Surface2)) e.Graphics.FillRectangle(br, e.Bounds);
+                using (var br = new SolidBrush(Surface)) e.Graphics.FillRectangle(br, e.Bounds);
                 using (var pen = new Pen(Border)) e.Graphics.DrawLine(pen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
-                TextRenderer.DrawText(e.Graphics, e.Header.Text.ToUpperInvariant(), F(8f, FontStyle.Bold),
-                    new Rectangle(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 12, e.Bounds.Height), Muted, flags);
+                using (var f = F(8f, FontStyle.Bold))
+                    TextRenderer.DrawText(e.Graphics, e.Header.Text.ToUpperInvariant(), f,
+                        new Rectangle(e.Bounds.X + 12, e.Bounds.Y, e.Bounds.Width - 14, e.Bounds.Height), Muted, flags);
             };
             lv.DrawItem += delegate (object s, DrawListViewItemEventArgs e) { e.DrawDefault = false; };
             lv.DrawSubItem += delegate (object s, DrawListViewSubItemEventArgs e)
             {
-                Rectangle r = e.Bounds;
-                if (e.ColumnIndex == 0) r = new Rectangle(r.X, r.Y, lv.Columns[0].Width, r.Height);
-                Color bg = e.Item.Selected ? Select : (e.ItemIndex % 2 == 1 ? RowAlt : Surface);
-                using (var br = new SolidBrush(bg)) e.Graphics.FillRectangle(br, r);
-                TextRenderer.DrawText(e.Graphics, e.SubItem.Text, lv.Font, new Rectangle(r.X + 10, r.Y, r.Width - 12, r.Height), Text, flags);
+                Rectangle cell = e.Bounds;
+                if (e.ColumnIndex == 0) cell = new Rectangle(cell.X, cell.Y, lv.Columns[0].Width, cell.Height);
+                Rectangle ib = e.Item.Bounds;
+                var row = new Rectangle(ib.X + 2, ib.Y + 2, Math.Min(ib.Width, lv.ClientSize.Width - ib.X) - 4, ib.Height - 4);
+                Color bg = e.Item.Selected ? Select : (e.Item == hot ? Hover : (e.ItemIndex % 2 == 1 ? RowAlt : Surface));
+                PaintRow(e.Graphics, cell, row, bg, Surface);
+                TextRenderer.DrawText(e.Graphics, e.SubItem.Text, lv.Font, new Rectangle(cell.X + 12, cell.Y, cell.Width - 14, cell.Height), Text, flags);
             };
             lv.Resize += delegate { FitLast(lv); };
             lv.ColumnWidthChanged += delegate { FitLast(lv); };
             lv.HandleCreated += delegate { FitLast(lv); };
         }
+
+        // Puts a control inside a rounded card that takes over its docking.
+        public static Card Framed(Control c, string title)
+        {
+            var card = new Card { Text = title ?? "", Dock = c.Dock, Padding = new Padding(6, string.IsNullOrEmpty(title) ? 6 : 0, 6, 6) };
+            c.Dock = DockStyle.Fill;
+            card.Controls.Add(c);
+            return card;
+        }
     }
 
-    // A rounded, bordered panel with an optional small-caps title.
+    // ------------------------------------------------------------------ rounded control skins
+    // Fully owner-paints a standard Button as a rounded pill (keeps all normal Button behaviour).
+    class ButtonSkin
+    {
+        static readonly Dictionary<Button, ButtonSkin> all = new Dictionary<Button, ButtonSkin>();
+        readonly Button b;
+        public string Kind;
+        bool hover, down;
+
+        public static void Attach(Button b, string kind)
+        {
+            ButtonSkin s;
+            if (all.TryGetValue(b, out s)) { s.Kind = kind; b.Invalidate(); return; }
+            s = new ButtonSkin(b, kind); all[b] = s;
+            b.Disposed += delegate { all.Remove(b); };
+        }
+
+        ButtonSkin(Button btn, string kind)
+        {
+            b = btn; Kind = kind;
+            b.FlatStyle = FlatStyle.Flat; b.UseVisualStyleBackColor = false; b.Cursor = Cursors.Hand;
+            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = Color.Empty; b.FlatAppearance.MouseDownBackColor = Color.Empty;
+            b.BackColor = Theme.Surface2; b.ForeColor = Theme.Text;
+            b.MouseEnter += delegate { hover = true; b.Invalidate(); };
+            b.MouseLeave += delegate { hover = false; down = false; b.Invalidate(); };
+            b.MouseDown += delegate (object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) { down = true; b.Invalidate(); } };
+            b.MouseUp += delegate { down = false; b.Invalidate(); };
+            b.EnabledChanged += delegate { b.Invalidate(); };
+            b.TextChanged += delegate { b.Invalidate(); };
+            b.Paint += Paint;
+        }
+
+        void Paint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Gfx.BackOf(b));
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Color fill, border, text;
+            bool en = b.Enabled;
+            if (Kind == "primary")
+            {
+                fill = !en ? Theme.AccentSoft : down ? Theme.AccentDown : hover ? Theme.AccentHover : Theme.Accent;
+                border = fill; text = en ? Theme.AccentInk : Theme.Muted;
+            }
+            else if (Kind == "danger")
+            {
+                fill = !en ? Theme.Surface2 : down ? Color.FromArgb(92, 40, 44) : hover ? Color.FromArgb(70, 34, 38) : Theme.DangerSoft;
+                border = en ? Color.FromArgb(96, 50, 52) : Theme.Border; text = en ? Theme.DangerText : Theme.Faint;
+            }
+            else
+            {
+                fill = !en ? Theme.Surface2 : down ? Theme.Border : hover ? Theme.Hover : Theme.Surface2;
+                border = hover && en ? Color.FromArgb(62, 72, 86) : Theme.Border; text = en ? Theme.Text : Theme.Faint;
+            }
+            var r = new RectangleF(0.5f, 0.5f, b.Width - 1.5f, b.Height - 1.5f);
+            using (var path = Gfx.Round(r, Theme.RCtl))
+            {
+                using (var br = new SolidBrush(fill)) g.FillPath(br, path);
+                using (var pen = new Pen(border)) g.DrawPath(pen, path);
+            }
+            if (Kind == "primary" && en && !down)   // soft top highlight
+                using (var path = Gfx.Round(new RectangleF(1.5f, 1.5f, b.Width - 3.5f, b.Height / 2f), Theme.RCtl - 1))
+                using (var br = new SolidBrush(Color.FromArgb(22, 255, 255, 255))) g.FillPath(br, path);
+            var tr = new Rectangle(4, down ? 1 : 0, b.Width - 8, b.Height);
+            TextRenderer.DrawText(g, b.Text, b.Font, tr, text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.HidePrefix);
+        }
+    }
+
+    // Paints a CheckBox as a rounded toggle switch.
+    static class ToggleSkin
+    {
+        static readonly HashSet<CheckBox> done = new HashSet<CheckBox>();
+        public static void Attach(CheckBox ck)
+        {
+            if (!done.Add(ck)) return;
+            ck.FlatStyle = FlatStyle.Flat; ck.ForeColor = Theme.Text; ck.Cursor = Cursors.Hand;
+            ck.Padding = new Padding(24, 0, 0, 0); ck.MinimumSize = new Size(0, 24);
+            bool hover = false;
+            ck.MouseEnter += delegate { hover = true; ck.Invalidate(); };
+            ck.MouseLeave += delegate { hover = false; ck.Invalidate(); };
+            ck.CheckedChanged += delegate { ck.Invalidate(); };
+            ck.Disposed += delegate { done.Remove(ck); };
+            ck.Paint += delegate (object s, PaintEventArgs e)
+            {
+                var g = e.Graphics; g.Clear(Gfx.BackOf(ck)); g.SmoothingMode = SmoothingMode.AntiAlias;
+                bool on = ck.Checked, en = ck.Enabled;
+                var sw = new RectangleF(1, (ck.Height - 20) / 2f, 36, 20);
+                Color track = on ? (en ? (hover ? Theme.AccentHover : Theme.Accent) : Theme.AccentSoft) : (hover && en ? Theme.Border : Theme.Surface2);
+                using (var path = Gfx.Round(sw, 10))
+                {
+                    using (var br = new SolidBrush(track)) g.FillPath(br, path);
+                    using (var pen = new Pen(on ? track : Theme.Border)) g.DrawPath(pen, path);
+                }
+                float kx = on ? sw.Right - 17 : sw.X + 3;
+                using (var br = new SolidBrush(on ? Color.White : (en ? Theme.Muted : Theme.Faint))) g.FillEllipse(br, kx, sw.Y + 3, 14, 14);
+                TextRenderer.DrawText(g, ck.Text, ck.Font, new Rectangle(46, 0, ck.Width - 46, ck.Height), en ? Theme.Text : Theme.Faint,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+            };
+        }
+    }
+
+    // Paints a RadioButton with a rounded accent ring.
+    static class RadioSkin
+    {
+        static readonly HashSet<RadioButton> done = new HashSet<RadioButton>();
+        public static void Attach(RadioButton rb)
+        {
+            if (!done.Add(rb)) return;
+            rb.FlatStyle = FlatStyle.Flat; rb.ForeColor = Theme.Text; rb.Cursor = Cursors.Hand;
+            rb.Padding = new Padding(8, 0, 0, 0); rb.MinimumSize = new Size(0, 24);
+            rb.CheckedChanged += delegate { rb.Invalidate(); };
+            rb.Disposed += delegate { done.Remove(rb); };
+            rb.Paint += delegate (object s, PaintEventArgs e)
+            {
+                var g = e.Graphics; g.Clear(Gfx.BackOf(rb)); g.SmoothingMode = SmoothingMode.AntiAlias;
+                float y = (rb.Height - 18) / 2f;
+                using (var br = new SolidBrush(Theme.Input)) g.FillEllipse(br, 1, y, 18, 18);
+                using (var pen = new Pen(rb.Checked ? Theme.Accent : Theme.Border, 1.5f)) g.DrawEllipse(pen, 1, y, 18, 18);
+                if (rb.Checked) using (var br = new SolidBrush(Theme.Accent)) g.FillEllipse(br, 5.5f, y + 4.5f, 9, 9);
+                TextRenderer.DrawText(g, rb.Text, rb.Font, new Rectangle(26, 0, rb.Width - 26, rb.Height), rb.Enabled ? Theme.Text : Theme.Faint,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            };
+        }
+    }
+
+    // Rounded frame around a borderless TextBox / RichTextBox / NumericUpDown, with a focus glow.
+    class RoundHost : Panel
+    {
+        public readonly Control Inner;
+        public readonly bool Single;
+        bool focused, hover;
+
+        public RoundHost(Control inner)
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            Inner = inner; BackColor = Theme.Input; ForeColor = Theme.Text; Cursor = Cursors.IBeam;
+            var tb = inner as TextBox;
+            Single = !(inner is RichTextBox) && !(tb != null && tb.Multiline);
+            Padding = Single ? new Padding(0) : new Padding(12, 9, 6, 9);
+            inner.Margin = new Padding(0);
+            inner.Dock = Single ? DockStyle.None : DockStyle.Fill;
+            if (Single) inner.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            Controls.Add(inner);
+            inner.Enter += delegate { focused = true; Invalidate(); };
+            inner.Leave += delegate { focused = false; Invalidate(); };
+            inner.EnabledChanged += delegate { Invalidate(); };
+            inner.MouseEnter += delegate { hover = true; Invalidate(); };
+            inner.MouseLeave += delegate { hover = false; Invalidate(); };
+            inner.SizeChanged += delegate { if (Single) PlaceInner(); };
+            MouseEnter += delegate { hover = true; Invalidate(); };
+            MouseLeave += delegate { hover = false; Invalidate(); };
+            MouseDown += delegate { if (Inner.CanFocus) Inner.Focus(); };
+            PlaceInner();
+        }
+
+        bool placing;
+        void PlaceInner()
+        {
+            if (!Single || placing) return;
+            placing = true;
+            int right = Inner is NumericUpDown ? 4 : 10;
+            Inner.Left = 11;
+            Inner.Width = Math.Max(10, Width - 11 - right);
+            Inner.Top = Math.Max(0, (Height - Inner.Height) / 2);
+            placing = false;
+        }
+        protected override void OnResize(EventArgs e) { base.OnResize(e); PlaceInner(); }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics; g.Clear(Gfx.BackOf(this)); g.SmoothingMode = SmoothingMode.AntiAlias;
+            bool en = Inner.Enabled;
+            var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+            if (focused)   // outer glow ring
+                using (var path = Gfx.Round(r, Theme.RCtl)) using (var pen = new Pen(Color.FromArgb(70, Theme.Accent), 3f)) g.DrawPath(pen, path);
+            using (var path = Gfx.Round(new RectangleF(r.X + (focused ? 1 : 0), r.Y + (focused ? 1 : 0), r.Width - (focused ? 2 : 0), r.Height - (focused ? 2 : 0)), Theme.RCtl))
+            {
+                using (var br = new SolidBrush(en ? Theme.Input : Theme.Surface)) g.FillPath(br, path);
+                Color bc = focused ? Theme.Accent : (hover && en ? Color.FromArgb(66, 76, 90) : Theme.Border);
+                using (var pen = new Pen(bc)) g.DrawPath(pen, path);
+            }
+        }
+    }
+
+    // Rounded panel used for the connection bar and other toolbars.
+    class RoundFlow : FlowLayoutPanel
+    {
+        public RoundFlow()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BackColor = Theme.Surface; ForeColor = Theme.Text; Padding = new Padding(14, 10, 14, 10);
+        }
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            var g = e.Graphics; g.Clear(Gfx.BackOf(this)); g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var path = Gfx.Round(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), Theme.RCard))
+            {
+                using (var br = new SolidBrush(BackColor)) g.FillPath(br, path);
+                using (var pen = new Pen(Theme.Border)) g.DrawPath(pen, path);
+            }
+        }
+    }
+
+    // Draws the closed state of a ComboBox as a rounded field with a chevron, and dark dropdown rows.
+    class ComboSkin : NativeWindow
+    {
+        static readonly List<ComboSkin> keep = new List<ComboSkin>();
+        readonly ComboBox cb;
+        bool hover;
+
+        public static void Attach(ComboBox cb)
+        {
+            foreach (var k in keep) if (k.cb == cb) return;
+            keep.Add(new ComboSkin(cb));
+        }
+        ComboSkin(ComboBox c)
+        {
+            cb = c;
+            cb.FlatStyle = FlatStyle.Flat; cb.DrawMode = DrawMode.OwnerDrawFixed; cb.ItemHeight = 24; cb.Cursor = Cursors.Hand;
+            cb.DrawItem += DrawItem;
+            if (cb.IsHandleCreated) AssignHandle(cb.Handle);
+            cb.HandleCreated += delegate { AssignHandle(cb.Handle); };
+            cb.HandleDestroyed += delegate { ReleaseHandle(); };
+            cb.MouseEnter += delegate { hover = true; cb.Invalidate(); };
+            cb.MouseLeave += delegate { hover = false; cb.Invalidate(); };
+            cb.SelectedIndexChanged += delegate { cb.Invalidate(); };
+            cb.DropDownClosed += delegate { cb.Invalidate(); };
+            cb.GotFocus += delegate { cb.Invalidate(); };
+            cb.LostFocus += delegate { cb.Invalidate(); };
+            cb.EnabledChanged += delegate { cb.Invalidate(); };
+            cb.Disposed += delegate { keep.Remove(this); };
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            if (m.Msg == 0x000F || m.Msg == 0x0085)   // WM_PAINT, WM_NCPAINT
+                try { using (var g = Graphics.FromHwnd(Handle)) Draw(g); } catch { }
+        }
+
+        void Draw(Graphics g)
+        {
+            var b = new Rectangle(0, 0, cb.Width, cb.Height);
+            using (var br = new SolidBrush(Gfx.BackOf(cb))) g.FillRectangle(br, b);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            bool en = cb.Enabled, foc = cb.Focused || cb.DroppedDown;
+            using (var path = Gfx.Round(new RectangleF(0.5f, 0.5f, b.Width - 1.5f, b.Height - 1.5f), Theme.RCtl))
+            {
+                using (var br = new SolidBrush(en ? (hover ? Theme.Hover : Theme.Surface2) : Theme.Surface)) g.FillPath(br, path);
+                using (var pen = new Pen(foc ? Theme.Accent : Theme.Border)) g.DrawPath(pen, path);
+            }
+            TextRenderer.DrawText(g, cb.Text, cb.Font, new Rectangle(11, 0, b.Width - 36, b.Height), en ? Theme.Text : Theme.Faint,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+            // chevron
+            float cx = b.Width - 17, cy = b.Height / 2f;
+            using (var pen = new Pen(Theme.Muted, 1.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                g.DrawLines(pen, new PointF[] { new PointF(cx - 4, cy - 2), new PointF(cx, cy + 2), new PointF(cx + 4, cy - 2) });
+        }
+
+        void DrawItem(object sender, DrawItemEventArgs e)
+        {
+            var g = e.Graphics;
+            using (var br = new SolidBrush(Theme.Surface2)) g.FillRectangle(br, e.Bounds);
+            if (e.Index < 0) return;
+            bool sel = (e.State & DrawItemState.Selected) != 0 && (e.State & DrawItemState.ComboBoxEdit) == 0;
+            if (sel)
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using (var path = Gfx.Round(new Rectangle(e.Bounds.X + 3, e.Bounds.Y + 1, e.Bounds.Width - 6, e.Bounds.Height - 2), 6))
+                using (var br = new SolidBrush(Theme.Select)) g.FillPath(br, path);
+            }
+            TextRenderer.DrawText(g, cb.GetItemText(cb.Items[e.Index]), cb.Font, new Rectangle(e.Bounds.X + 10, e.Bounds.Y, e.Bounds.Width - 12, e.Bounds.Height), Theme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+    }
+
+    // A rounded, bordered panel with an optional small-caps title and icon.
     class Card : Panel
     {
+        public string Glyph = "";
         public Card()
         {
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Surface; ForeColor = Theme.Text; Padding = new Padding(12);
         }
-        int TitleH { get { return string.IsNullOrEmpty(Text) ? 0 : 30; } }
+        int TitleH { get { return string.IsNullOrEmpty(Text) ? 0 : 36; } }
         public override Rectangle DisplayRectangle
         {
             get { Rectangle r = base.DisplayRectangle; return new Rectangle(r.X, r.Y + TitleH, r.Width, Math.Max(0, r.Height - TitleH)); }
         }
+        protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); PerformLayout(); Invalidate(); }
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Parent != null ? Parent.BackColor : Theme.Bg);
+            g.Clear(Gfx.BackOf(this));
             var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
-            using (var path = Gfx.Round(r, 8))
+            using (var path = Gfx.Round(r, Theme.RCard))
             {
                 using (var br = new SolidBrush(BackColor)) g.FillPath(br, path);
                 using (var pen = new Pen(Theme.Border)) g.DrawPath(pen, path);
             }
+            int tx = 16;
+            if (TitleH > 0 && Glyph.Length > 0 && Gfx.HasIconFont)
+            {
+                Gfx.DrawIcon(g, Glyph, new Rectangle(14, 10, 18, 18), Theme.Accent, 10f);
+                tx = 38;
+            }
             if (TitleH > 0)
-                TextRenderer.DrawText(g, Text.Replace("&&", "&").ToUpperInvariant(), Theme.F(8f, FontStyle.Bold), new Point(14, 10), Theme.Muted,
-                    TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                using (var f = Theme.F(8.25f, FontStyle.Bold))
+                    TextRenderer.DrawText(g, Text.Replace("&&", "&").ToUpperInvariant(), f, new Point(tx, 13), Theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         }
     }
 
-    // ------------------------------------------------------------------ sidebar navigation (replaces NavTabs)
+    // ------------------------------------------------------------------ sidebar navigation
     class Page : Panel
     {
-        public Page(string text)
+        public string Glyph, Sub;
+        public Page(string text, string glyph, string sub)
         {
-            Text = text; Dock = DockStyle.Fill; Padding = new Padding(22, 18, 22, 16);
+            Text = text; Glyph = glyph; Sub = sub;
+            Dock = DockStyle.Fill; Padding = new Padding(24, 66, 24, 18);
             BackColor = Theme.Bg; ForeColor = Theme.Text; Visible = false;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw, true);
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var g = e.Graphics;
+            using (var f = Theme.F(16f, FontStyle.Bold))
+                TextRenderer.DrawText(g, Text.Replace("&&", "&"), f, new Point(22, 12), Theme.Text, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            if (!string.IsNullOrEmpty(Sub))
+                using (var f = Theme.F(9f))
+                    TextRenderer.DrawText(g, Sub, f, new Point(24, 42), Theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         }
     }
 
@@ -818,10 +1283,12 @@ namespace JetsAdminPanel
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() { return owner.Pages.GetEnumerator(); }
     }
 
+    // Sidebar on the left; on the right a header (connection card), the page area and a footer.
     class NavTabs : Panel
     {
         public readonly List<Page> Pages = new List<Page>();
         public readonly PageList TabPages;
+        public readonly Panel Header, Footer;
         readonly NavBar bar;
         readonly Panel host;
         int sel = -1;
@@ -830,9 +1297,14 @@ namespace JetsAdminPanel
         public NavTabs()
         {
             TabPages = new PageList(this);
+            BackColor = Theme.Bg;
+            var right = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
             host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
-            bar = new NavBar(this) { Dock = DockStyle.Left, Width = 208 };
-            Controls.Add(host); Controls.Add(bar);
+            Header = new Panel { Dock = DockStyle.Top, Height = 70, BackColor = Theme.Bg, Padding = new Padding(22, 16, 22, 0) };
+            Footer = new Panel { Dock = DockStyle.Bottom, Height = 36, BackColor = Theme.Bg };
+            right.Controls.Add(host); right.Controls.Add(Header); right.Controls.Add(Footer);
+            bar = new NavBar(this) { Dock = DockStyle.Left, Width = 228 };
+            Controls.Add(right); Controls.Add(bar);
         }
         public int Selected { get { return sel; } }
         public void SetStatus(bool ok, string text) { bar.Online = ok; bar.StatusText = text; bar.Invalidate(); }
@@ -858,15 +1330,17 @@ namespace JetsAdminPanel
         int hover = -1;
         public bool Online;
         public string StatusText = "Offline";
-        const int ItemH = 40, Gap = 2, Top0 = 16;
+        Image logo;
+        const int ItemH = 42, Gap = 4, Top0 = 92;
 
         public NavBar(NavTabs o)
         {
             owner = o;
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
             BackColor = Theme.Surface;
+            try { logo = Icon.ExtractAssociatedIcon(Application.ExecutablePath).ToBitmap(); } catch { }
         }
-        Rectangle ItemRect(int i) { return new Rectangle(10, Top0 + i * (ItemH + Gap), Width - 21, ItemH); }
+        Rectangle ItemRect(int i) { return new Rectangle(12, Top0 + i * (ItemH + Gap), Width - 25, ItemH); }
         int HitTest(Point p) { for (int i = 0; i < owner.Pages.Count; i++) if (ItemRect(i).Contains(p)) return i; return -1; }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -874,25 +1348,51 @@ namespace JetsAdminPanel
             var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Theme.Surface);
             using (var pen = new Pen(Theme.Border)) g.DrawLine(pen, Width - 1, 0, Width - 1, Height);
+            const TextFormatFlags tf = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine;
+
+            // brand
+            var lr = new Rectangle(18, 22, 40, 40);
+            using (var path = Gfx.Round(lr, 11))
+            {
+                using (var br = new LinearGradientBrush(lr, Color.FromArgb(52, 206, 156), Color.FromArgb(28, 128, 102), 45f)) g.FillPath(br, path);
+                if (logo != null) { var clip = g.Clip; g.SetClip(path); g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.DrawImage(logo, new Rectangle(lr.X + 4, lr.Y + 4, 32, 32)); g.Clip = clip; }
+            }
+            using (var f = Theme.F(11.5f, FontStyle.Bold)) TextRenderer.DrawText(g, "Jets Rust Admin", f, new Rectangle(68, 22, Width - 76, 22), Theme.Text, tf);
+            using (var f = Theme.F(8.25f)) TextRenderer.DrawText(g, "Server control  ·  v" + Updater.Current, f, new Rectangle(69, 44, Width - 76, 18), Theme.Muted, tf);
+            using (var pen = new Pen(Theme.Border)) g.DrawLine(pen, 18, 78, Width - 19, 78);
+
             for (int i = 0; i < owner.Pages.Count; i++)
             {
                 var pg = owner.Pages[i]; var r = ItemRect(i);
-                bool selected = i == owner.Selected, enabled = pg.Enabled;
-                if (selected || (hover == i && enabled))
-                    using (var path = Gfx.Round(new RectangleF(r.X, r.Y, r.Width, r.Height), 7))
-                    using (var br = new SolidBrush(selected ? Theme.Surface2 : Color.FromArgb(120, Theme.Hover))) g.FillPath(br, path);
+                bool selected = i == owner.Selected, enabled = pg.Enabled, hot = hover == i && enabled;
+                if (selected || hot)
+                    using (var path = Gfx.Round(r, 10))
+                    using (var br = new SolidBrush(selected ? Theme.AccentSoft : Theme.Hover)) g.FillPath(br, path);
                 if (selected)
-                    using (var br = new SolidBrush(Theme.Accent)) g.FillRectangle(br, r.X, r.Y + 10, 3, r.Height - 20);
-                Color c = !enabled ? Color.FromArgb(86, 96, 110) : selected ? Theme.Text : (hover == i ? Theme.Text : Theme.Muted);
-                TextRenderer.DrawText(g, pg.Text.Replace("&&", "&"), Theme.F(10f, selected ? FontStyle.Bold : FontStyle.Regular),
-                    new Rectangle(r.X + 18, r.Y, r.Width - 20, r.Height), c,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+                    using (var path = Gfx.Round(new RectangleF(r.X + 1, r.Y + 11, 4, r.Height - 22), 2))
+                    using (var br = new SolidBrush(Theme.Accent)) g.FillPath(br, path);
+                Color c = !enabled ? Theme.Faint : selected ? Theme.Text : (hot ? Theme.Text : Theme.Muted);
+                int tx = 16;
+                if (Gfx.HasIconFont)
+                {
+                    Gfx.DrawIcon(g, pg.Glyph, new Rectangle(r.X + 12, r.Y, 22, r.Height), selected ? Theme.Accent : c, 11.5f);
+                    tx = 44;
+                }
+                using (var f = Theme.F(10f, selected ? FontStyle.Bold : FontStyle.Regular))
+                    TextRenderer.DrawText(g, pg.Text.Replace("&&", "&"), f, new Rectangle(r.X + tx, r.Y, r.Width - tx - 6, r.Height), c, tf);
             }
-            // connection chip at the bottom
-            int y = Height - 46;
-            using (var br = new SolidBrush(Online ? Theme.Ok : Theme.Danger)) g.FillEllipse(br, 22, y + 5, 10, 10);
-            TextRenderer.DrawText(g, StatusText, Theme.F(9f), new Rectangle(40, y, Width - 48, 20), Theme.Muted,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+
+            // connection pill at the bottom
+            var pr = new Rectangle(12, Height - 58, Width - 25, 42);
+            using (var path = Gfx.Round(pr, 21))
+            {
+                using (var br = new SolidBrush(Theme.Surface2)) g.FillPath(br, path);
+                using (var pen = new Pen(Theme.Border)) g.DrawPath(pen, path);
+            }
+            Color dot = Online ? Theme.Ok : Theme.Danger;
+            using (var br = new SolidBrush(Color.FromArgb(60, dot))) g.FillEllipse(br, pr.X + 13, pr.Y + 14, 14, 14);
+            using (var br = new SolidBrush(dot)) g.FillEllipse(br, pr.X + 16, pr.Y + 17, 8, 8);
+            using (var f = Theme.F(9f)) TextRenderer.DrawText(g, StatusText, f, new Rectangle(pr.X + 36, pr.Y, pr.Width - 44, pr.Height), Theme.Text, tf);
         }
         protected override void OnMouseMove(MouseEventArgs e)
         {
@@ -912,7 +1412,7 @@ namespace JetsAdminPanel
     // Dark replacement for MessageBox.
     static class Dlg
     {
-        public static DialogResult Show(string text) { return Show(text, "Jet's Admin Panel", false); }
+        public static DialogResult Show(string text) { return Show(text, "Jets Rust Admin", false); }
         public static DialogResult Show(string text, string title, bool yesNo)
         {
             using (var f = new Form())
@@ -920,18 +1420,18 @@ namespace JetsAdminPanel
                 f.Text = title; f.FormBorderStyle = FormBorderStyle.FixedDialog; f.StartPosition = FormStartPosition.CenterParent;
                 f.MaximizeBox = false; f.MinimizeBox = false; f.ShowInTaskbar = false; f.Font = Theme.F(9.5f);
                 Size sz = TextRenderer.MeasureText(text, f.Font, new Size(420, 0), TextFormatFlags.WordBreak);
-                var l = new Label { Text = text, Left = 22, Top = 22, Width = 420, Height = Math.Max(22, sz.Height + 4), AutoSize = false };
-                f.ClientSize = new Size(464, 22 + l.Height + 28 + 36 + 18);
-                int by = 22 + l.Height + 28;
+                var l = new Label { Text = text, Left = 24, Top = 24, Width = 420, Height = Math.Max(22, sz.Height + 4), AutoSize = false };
+                int by = 24 + l.Height + 24;
+                f.ClientSize = new Size(468, by + 32 + 20);
                 if (yesNo)
                 {
-                    var yes = new Button { Text = "Yes", Left = 270, Top = by, Width = 84, DialogResult = DialogResult.Yes };
-                    var no = new Button { Text = "No", Left = 360, Top = by, Width = 84, DialogResult = DialogResult.No };
+                    var yes = new Button { Text = "Yes", Left = 264, Top = by, Width = 88, Height = 32, DialogResult = DialogResult.Yes };
+                    var no = new Button { Text = "No", Left = 358, Top = by, Width = 88, Height = 32, DialogResult = DialogResult.No };
                     f.Controls.AddRange(new Control[] { l, yes, no }); f.AcceptButton = yes; f.CancelButton = no;
                 }
                 else
                 {
-                    var ok = new Button { Text = "OK", Left = 360, Top = by, Width = 84, DialogResult = DialogResult.OK };
+                    var ok = new Button { Text = "OK", Left = 358, Top = by, Width = 88, Height = 32, DialogResult = DialogResult.OK };
                     f.Controls.AddRange(new Control[] { l, ok }); f.AcceptButton = ok; f.CancelButton = ok;
                 }
                 Theme.Apply(f);
@@ -993,23 +1493,29 @@ namespace JetsAdminPanel
 
         public MainForm()
         {
-            Text = "Jet's Admin Panel for Rust";
+            Text = "Jets Rust Admin";
             Font = Theme.F(9.25f);
             BackColor = Theme.Bg; ForeColor = Theme.Text;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-            Size = new Size(1280, 800);
+            var wa = Screen.PrimaryScreen.WorkingArea;
+            Size = new Size(Math.Max(1000, Math.Min(1440, wa.Width - 40)), Math.Max(640, Math.Min(900, wa.Height - 40)));
             MinimumSize = new Size(1000, 640);
             StartPosition = FormStartPosition.CenterScreen;
             U.WorldSize = cfg.WorldSize > 0 ? cfg.WorldSize : 4000f;
 
-            BuildConnectionBar();
             tabs = new NavTabs { Dock = DockStyle.Fill };
-            tabDash = new Page("Dashboard"); tabPlayers = new Page("Players"); tabMap = new Page("Live Map");
-            tabConsole = new Page("Console"); tabChat = new Page("Chat"); tabBans = new Page("Bans");
-            tabServer = new Page("Server"); tabSched = new Page("Restart Scheduler"); tabPlugins = new Page("Plugins & Permissions");
+            tabDash = new Page("Dashboard", "", "Live overview of your server");
+            tabPlayers = new Page("Players", "", "Everyone online right now - select players, then act on them");
+            tabMap = new Page("Live Map", "", "Player positions on your server's map");
+            tabConsole = new Page("Console", "", "Raw RCON console - Up/Down for command history");
+            tabChat = new Page("Chat", "", "In-game chat, live");
+            tabBans = new Page("Bans", "", "Server ban list");
+            tabServer = new Page("Server", "", "Server settings, environment and events");
+            tabSched = new Page("Restart Scheduler", "", "Daily restarts with in-game warnings");
+            tabPlugins = new Page("Plugins & Permissions", "", "Oxide / uMod plugins and permissions");
             tabs.TabPages.AddRange(new Page[] { tabDash, tabPlayers, tabMap, tabConsole, tabChat, tabBans, tabServer, tabSched, tabPlugins });
             Controls.Add(tabs);
-            tabs.BringToFront();
+            BuildConnectionBar();
 
             BuildDashboard(); BuildPlayers(); BuildMap(); BuildConsole(); BuildChat(); BuildBans(); BuildServer(); BuildScheduler(); BuildPlugins();
 
@@ -1042,14 +1548,14 @@ namespace JetsAdminPanel
         // ---------------------------------------------------------- UI building
         static Button Btn(string text, EventHandler click)
         {
-            var b = new Button { Text = text, AutoSize = true, Padding = new Padding(8, 1, 8, 1), Margin = new Padding(0, 0, 8, 6) };
+            var b = new Button { Text = text, AutoSize = true, Padding = new Padding(12, 1, 12, 1), Margin = new Padding(0, 0, 8, 8) };
             b.Click += click; return b;
         }
         static FlowLayoutPanel Bar()
         {
             return new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(0, 0, 0, 10), WrapContents = true };
         }
-        static Label Lbl(string t) { return new Label { Text = t, AutoSize = true, Margin = new Padding(8, 8, 6, 0), ForeColor = Theme.Muted }; }
+        static Label Lbl(string t) { return new Label { Text = t, AutoSize = true, Margin = new Padding(8, 9, 6, 0), ForeColor = Theme.Muted }; }
         static ListView MakeList(params string[] cols)
         {
             var lv = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false };
@@ -1060,40 +1566,45 @@ namespace JetsAdminPanel
 
         void BuildConnectionBar()
         {
-            var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(16, 10, 16, 8), BackColor = Theme.Surface, WrapContents = true };
-            bar.Paint += delegate (object sender, PaintEventArgs pe) { using (var pen = new Pen(Theme.Border)) pe.Graphics.DrawLine(pen, 0, bar.Height - 1, bar.Width, bar.Height - 1); };
-            var logo = new PictureBox { Size = new Size(30, 30), SizeMode = PictureBoxSizeMode.Zoom, Margin = new Padding(0, 0, 10, 0), BackColor = Theme.Surface };
-            try { logo.Image = Icon.ExtractAssociatedIcon(Application.ExecutablePath).ToBitmap(); } catch { }
-            var title = new Label { Text = "JETS ADMIN PANEL", AutoSize = true, Font = Theme.F(11f, FontStyle.Bold), Margin = new Padding(0, 5, 26, 0), ForeColor = Theme.Text };
-            txtHost = new TextBox { Width = 122, Text = cfg.Host };
-            txtPort = new TextBox { Width = 56, Text = cfg.Port.ToString() };
-            txtPw = new TextBox { Width = 112, UseSystemPasswordChar = true, Text = Cfg.Unprotect(cfg.PwEnc) };
-            chkRemember = new CheckBox { Text = "Remember", AutoSize = true, Checked = cfg.RememberPw, Margin = new Padding(10, 5, 4, 0) };
-            chkAuto = new CheckBox { Text = "Auto-reconnect", AutoSize = true, Checked = cfg.AutoReconnect, Margin = new Padding(6, 5, 12, 0) };
+            var bar = new RoundFlow { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, Padding = new Padding(14, 11, 14, 9) };
+            txtHost = new TextBox { Width = 136, Text = cfg.Host };
+            txtPort = new TextBox { Width = 66, Text = cfg.Port.ToString() };
+            txtPw = new TextBox { Width = 128, UseSystemPasswordChar = true, Text = Cfg.Unprotect(cfg.PwEnc) };
+            chkRemember = new CheckBox { Text = "Remember", AutoSize = true, Checked = cfg.RememberPw };
+            chkAuto = new CheckBox { Text = "Auto-reconnect", AutoSize = true, Checked = cfg.AutoReconnect };
             btnConnect = Btn("Connect", delegate { ToggleConnect(); });
+            btnConnect.MinimumSize = new Size(104, 32);
             lblStatus = new Label { AutoSize = true, Text = "Not connected", ForeColor = Theme.Muted, Font = Theme.F(9f) };
-            cmbProfile = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 134, Margin = new Padding(0, 2, 6, 0) };
+            cmbProfile = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
             cmbProfile.SelectedIndexChanged += delegate { ApplyProfile(); };
-            foreach (var t in new TextBox[] { txtHost, txtPort, txtPw }) t.Margin = new Padding(0, 2, 6, 0);
             var saveBtn = Btn("Save", delegate { SaveProfile(); });
             var delBtn = Btn("Delete", delegate { DeleteProfile(); });
-            saveBtn.Margin = new Padding(0, 0, 6, 0); delBtn.Margin = new Padding(0, 0, 16, 0); btnConnect.Margin = new Padding(0, 0, 0, 0);
-            var chkStack = new FlowLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0) };
-            chkRemember.Margin = new Padding(0, 0, 0, 2); chkAuto.Margin = new Padding(0);
-            chkStack.Controls.Add(chkRemember); chkStack.Controls.Add(chkAuto);
-            btnUpdate = Btn("Updates", delegate { CheckForUpdates(true); });
-            bar.Controls.AddRange(new Control[] { logo, title, cmbProfile, saveBtn, delBtn, Lbl("HOST"), txtHost, Lbl("PORT"), txtPort, Lbl("PASSWORD"), txtPw, btnConnect, chkStack });
-            foreach (Control c in bar.Controls) { Label lb = c as Label; if (lb != null && lb != title) { lb.Font = Theme.F(8f, FontStyle.Bold); lb.Margin = new Padding(0, 8, 6, 0); } }
-            btnConnect.Margin = new Padding(6, 0, 10, 0);
-            Controls.Add(bar);
-            var foot = new Panel { Dock = DockStyle.Bottom, Height = 30, BackColor = Theme.Surface };
-            foot.Paint += delegate (object sender, PaintEventArgs pe) { using (var pen = new Pen(Theme.Border)) pe.Graphics.DrawLine(pen, 0, 0, foot.Width, 0); };
-            lblStatus.Margin = new Padding(0); lblStatus.Location = new Point(16, 7);
+            var div = new Panel { Width = 1, Height = 30, BackColor = Theme.Border, Margin = new Padding(6, 1, 14, 0) };
+            bar.Controls.AddRange(new Control[] { Lbl("PROFILE"), cmbProfile, saveBtn, delBtn, div, Lbl("HOST"), txtHost, Lbl("PORT"), txtPort, Lbl("PASSWORD"), txtPw, btnConnect, chkRemember, chkAuto });
+            foreach (Control c in bar.Controls)
+            {
+                Label lb = c as Label;
+                if (lb != null) { lb.Font = Theme.F(7.75f, FontStyle.Bold); lb.Margin = new Padding(0, 9, 7, 0); }
+                else if (c is TextBox || c is ComboBox) c.Margin = new Padding(0, 0, 12, 2);
+                else if (c is Button) c.Margin = new Padding(0, 0, 6, 2);
+                else if (c is CheckBox) c.Margin = new Padding(8, 4, 0, 0);
+            }
+            cmbProfile.Margin = new Padding(0, 1, 8, 2);
+            btnConnect.Margin = new Padding(2, 0, 6, 2);
+            var head = tabs.Header;
+            head.Controls.Add(bar);
+            bar.SizeChanged += delegate { head.Height = bar.Height + head.Padding.Vertical; };
+
+            var foot = tabs.Footer;
+            foot.Paint += delegate (object sender, PaintEventArgs pe) { using (var pen = new Pen(Theme.Border)) pe.Graphics.DrawLine(pen, 22, 0, foot.Width - 22, 0); };
+            lblStatus.Margin = new Padding(0); lblStatus.Location = new Point(24, 10);
             foot.Controls.Add(lblStatus);
-            btnUpdate.Height = 24; btnUpdate.Width = 120; btnUpdate.Anchor = AnchorStyles.Top | AnchorStyles.Right; btnUpdate.Location = new Point(foot.Width - 120 - 12, 3);
-            btnUpdate.Text = "Updates v" + Updater.Current;
+            btnUpdate = Btn("Updates", delegate { CheckForUpdates(true); });
+            btnUpdate.AutoSize = false; btnUpdate.MinimumSize = new Size(0, 26); btnUpdate.Font = Theme.F(8.5f);
+            btnUpdate.Size = new Size(130, 26); btnUpdate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnUpdate.Location = new Point(foot.Width - 130 - 22, 5);
+            btnUpdate.Text = "Updates  v" + Updater.Current;
             foot.Controls.Add(btnUpdate);
-            Controls.Add(foot);
             RefillProfiles();
         }
 
@@ -1113,7 +1624,7 @@ namespace JetsAdminPanel
 
         void UpdateChecked(Updater.Info up, string err, bool manual)
         {
-            btnUpdate.Enabled = true; btnUpdate.Text = "Updates v" + Updater.Current; updating = false;
+            btnUpdate.Enabled = true; btnUpdate.Text = "Updates  v" + Updater.Current; updating = false;
             if (err != null) { if (manual) Dlg.Show("Could not check for updates:\n" + err); return; }
             if (up == null) { if (manual) Dlg.Show("You're on the latest version (v" + Updater.Current + ")."); return; }
             string notes = string.IsNullOrWhiteSpace(up.Notes) ? "" : "\n\n" + up.Notes.Trim();
@@ -1129,7 +1640,7 @@ namespace JetsAdminPanel
                     BeginInvoke((Action)delegate
                     {
                         if (e2 == null) { cfg.Save(); if (rc != null) rc.Close(); Environment.Exit(0); }
-                        else { updating = false; btnUpdate.Enabled = true; btnUpdate.Text = "Updates v" + Updater.Current; Dlg.Show("Update failed:\n" + e2); }
+                        else { updating = false; btnUpdate.Enabled = true; btnUpdate.Text = "Updates  v" + Updater.Current; Dlg.Show("Update failed:\n" + e2); }
                     });
                 }
                 catch { }
@@ -1180,22 +1691,54 @@ namespace JetsAdminPanel
 
         void BuildDashboard()
         {
-            var tiles = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true };
+            // Tiles sit in a host 12px narrower than the flow, so the last tile's right margin hangs off the edge and rows end flush.
+            var tileHost = new Panel { Dock = DockStyle.Top, Height = 270 };
+            var tiles = new FlowLayoutPanel { Location = new Point(0, 0), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true };
+            tileHost.Controls.Add(tiles);
             string[] keys = { "Hostname", "Players", "Queue / Joining", "Server FPS", "Entities", "Uptime", "Memory", "Map", "Game time", "Network in/out", "Version", "Save" };
-            foreach (var k in keys)
+            string[] glyphs = { "\uE774", "\uE716", "\uE916", "\uE9D9", "\uE7B8", "\uE823", "\uE7F4", "\uE707", "\uE706", "\uE895", "\uE8EC", "\uE74E" };
+            for (int i = 0; i < keys.Length; i++)
             {
-                var tile = new Card { Width = k == "Hostname" ? 388 : 188, Height = 80, Margin = new Padding(0, 0, 12, 12), Padding = new Padding(0) };
-                var lk = new Label { Text = k.ToUpperInvariant(), AutoSize = true, ForeColor = Theme.Muted, Font = Theme.F(8f, FontStyle.Bold), Location = new Point(14, 12) };
-                var v = new Label { Text = "-", AutoSize = false, AutoEllipsis = true, Font = Theme.F(13f, FontStyle.Bold), Location = new Point(12, 36), Size = new Size(tile.Width - 24, 34) };
+                string k = keys[i], gl = glyphs[i];
+                var tile = new Card { Width = k == "Hostname" ? 404 : 196, Height = 78, Margin = new Padding(0, 0, 12, 12), Padding = new Padding(0) };
+                tile.Paint += delegate (object s2, PaintEventArgs pe)
+                {
+                    if (!Gfx.HasIconFont) return;
+                    var g = pe.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
+                    var ir = new Rectangle(tile.Width - 42, 12, 28, 28);
+                    using (var path = Gfx.Round(ir, 9)) using (var br = new SolidBrush(Theme.AccentSoft)) g.FillPath(br, path);
+                    Gfx.DrawIcon(g, gl, ir, Theme.Accent, 10.5f);
+                };
+                var lk = new Label { Text = k.ToUpperInvariant(), AutoSize = true, ForeColor = Theme.Muted, Font = Theme.F(7.75f, FontStyle.Bold), Location = new Point(16, 13), BackColor = Theme.Surface };
+                var v = new Label { Text = "-", AutoSize = false, AutoEllipsis = true, Font = Theme.F(14f, FontStyle.Bold), Location = new Point(14, 37), Size = new Size(tile.Width - 28, 32), BackColor = Theme.Surface };
+                v.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
                 tile.Controls.Add(lk); tile.Controls.Add(v);
                 dash[k] = v; tiles.Controls.Add(tile);
             }
+            // stretch the tiles so each row is filled edge to edge
+            bool sizing = false;
+            EventHandler relayout = delegate
+            {
+                if (sizing || tileHost.Width < 100) return;
+                sizing = true;
+                int avail = tileHost.Width + 12;
+                int cols = Math.Max(3, Math.Min(7, avail / 214));
+                int unit = avail / cols - 12;
+                tiles.SuspendLayout();
+                tiles.MaximumSize = new Size(avail, 0); tiles.MinimumSize = new Size(avail, 0);
+                foreach (Control t in tiles.Controls) t.Width = t == tiles.Controls[0] ? unit * 2 + 12 : unit;
+                tiles.ResumeLayout(true);
+                tileHost.Height = tiles.Height;
+                sizing = false;
+            };
+            tileHost.Resize += relayout;
+            tiles.SizeChanged += delegate { if (!sizing) tileHost.Height = tiles.Height; };
 
-            var sc = new Card { Text = "Players online", Dock = DockStyle.Fill, Padding = new Padding(10, 0, 12, 10) };
+            var sc = new Card { Text = "Players online", Glyph = "\uE9D2", Dock = DockStyle.Fill, Padding = new Padding(10, 0, 14, 12) };
             spark = new SparkPanel { Dock = DockStyle.Fill };
             sc.Controls.Add(spark);
 
-            var act = new Card { Text = "Quick actions", Dock = DockStyle.Bottom, Height = 142, Padding = new Padding(14, 0, 14, 10) };
+            var act = new Card { Text = "Quick actions", Glyph = "\uE945", Dock = DockStyle.Bottom, Height = 134, Padding = new Padding(16, 0, 16, 6) };
             var flow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true };
             txtBroadcast = new TextBox { Width = 380 };
             numRestart = new NumericUpDown { Minimum = 0, Maximum = 3600, Value = 300, Width = 70 };
@@ -1216,11 +1759,16 @@ namespace JetsAdminPanel
                     await Run("restart " + (int)numRestart.Value + " " + U.Q(txtRestartReason.Text));
             }));
             flow.Controls.Add(Btn("Quit now", async delegate { if (U.Confirm("Shut the server down immediately?")) await Run("quit"); }));
-            foreach (Control c in flow.Controls) { Label lb = c as Label; if (lb != null) { lb.Font = Theme.F(8f, FontStyle.Bold); lb.Margin = new Padding(8, 9, 6, 0); } }
+            foreach (Control c in flow.Controls)
+            {
+                Label lb = c as Label;
+                if (lb != null) { lb.Font = Theme.F(7.75f, FontStyle.Bold); lb.Margin = new Padding(lb == flow.Controls[0] ? 0 : 8, 9, 7, 0); }
+                else if (!(c is Button)) c.Margin = new Padding(0, 0, 10, 8);
+            }
             act.Controls.Add(flow);
 
             var holder = new Panel { Dock = DockStyle.Fill };
-            holder.Controls.Add(sc); holder.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 12 }); holder.Controls.Add(act); holder.Controls.Add(tiles);
+            holder.Controls.Add(sc); holder.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 12 }); holder.Controls.Add(act); holder.Controls.Add(tileHost);
             tabDash.Controls.Add(holder);
         }
 
@@ -1264,7 +1812,7 @@ namespace JetsAdminPanel
             lvPlayers.ContextMenuStrip = menu;
 
             tplBar = Bar();
-            tabPlayers.Controls.Add(lvPlayers);
+            tabPlayers.Controls.Add(Theme.Framed(lvPlayers, null));
             tabPlayers.Controls.Add(tplBar);
             tabPlayers.Controls.Add(bar);
             BuildTemplateButtons();
@@ -1292,13 +1840,14 @@ namespace JetsAdminPanel
         {
             using (var f = new Form())
             {
-                f.Text = "Custom player actions"; f.StartPosition = FormStartPosition.CenterParent; f.ClientSize = new Size(560, 330);
-                var l = new Label { Left = 10, Top = 8, Width = 540, Height = 54, Text = "One per line:  Label|command   Use {id} for the SteamID and {name} for the player name (add quotes yourself if needed). Examples: Kill|global.killplayer {id}   Heal|heal {id}. Commands not known to your server will show an error in the Console tab." };
-                var t = new TextBox { Left = 10, Top = 66, Width = 540, Height = 220, Multiline = true, ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 10f), Text = string.Join("\r\n", cfg.Templates.ToArray()) };
-                var ok = new Button { Text = "Save", Left = 394, Top = 294, Width = 76, DialogResult = DialogResult.OK };
-                var cancel = new Button { Text = "Cancel", Left = 474, Top = 294, Width = 76, DialogResult = DialogResult.Cancel };
+                f.Text = "Custom player actions"; f.StartPosition = FormStartPosition.CenterParent; f.ClientSize = new Size(576, 360);
+                f.FormBorderStyle = FormBorderStyle.FixedDialog; f.MaximizeBox = false; f.MinimizeBox = false; f.ShowInTaskbar = false;
+                var l = new Label { Left = 20, Top = 16, Width = 536, Height = 56, Text = "One per line:  Label|command   Use {id} for the SteamID and {name} for the player name (add quotes yourself if needed). Examples: Kill|global.killplayer {id}   Heal|heal {id}. Commands not known to your server will show an error in the Console tab." };
+                var t = new TextBox { Left = 20, Top = 78, Width = 536, Height = 214, Multiline = true, ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 10f), Text = string.Join("\r\n", cfg.Templates.ToArray()) };
+                var ok = new Button { Text = "Save", Left = 374, Top = 310, Width = 88, Height = 32, DialogResult = DialogResult.OK };
+                var cancel = new Button { Text = "Cancel", Left = 468, Top = 310, Width = 88, Height = 32, DialogResult = DialogResult.Cancel };
                 f.Controls.AddRange(new Control[] { l, t, ok, cancel }); f.AcceptButton = null; f.CancelButton = cancel; f.Font = Theme.F(9.5f); Theme.Apply(f); f.HandleCreated += delegate { Theme.DarkTitle(f); };
-                if (f.ShowDialog() != DialogResult.OK) return;
+                if (f.ShowDialog(this) != DialogResult.OK) return;
                 cfg.Templates = t.Text.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => x.IndexOf('|') > 0).ToList();
                 cfg.Save(); BuildTemplateButtons();
             }
@@ -1313,7 +1862,7 @@ namespace JetsAdminPanel
                     if (((PlayerInfo)lbMapPlayers.Items[i]).Id == p.Id) { lbMapPlayers.SelectedIndex = i; break; }
             };
 
-            var side = new Panel { Dock = DockStyle.Right, Width = 284, Padding = new Padding(16, 0, 0, 0) };
+            var side = new Panel { Dock = DockStyle.Right, Width = 312, Padding = new Padding(16, 0, 0, 0) };
             lbMapPlayers = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false, FormattingEnabled = true };
             Theme.StyleListBox(lbMapPlayers);
             lbMapPlayers.Format += delegate (object s, ListControlConvertEventArgs e)
@@ -1325,28 +1874,46 @@ namespace JetsAdminPanel
                 var p = lbMapPlayers.SelectedItem as PlayerInfo;
                 if (p != null) { map.SelectedId = p.Id; map.CenterOn(p); }
             };
-            var opts = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+            var optCard = new Card { Text = "Map options", Glyph = "\uE713", Dock = DockStyle.Top, Padding = new Padding(16, 0, 14, 10) };
+            var opts = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             chkNames = new CheckBox { Text = "Show player names", AutoSize = true, Checked = cfg.ShowNames };
             chkNames.CheckedChanged += delegate { map.ShowNames = chkNames.Checked; cfg.ShowNames = chkNames.Checked; map.Invalidate(); };
             chkTrack = new CheckBox { Text = "Track positions (printpos)", AutoSize = true, Checked = cfg.TrackPos };
             chkTrack.CheckedChanged += delegate { cfg.TrackPos = chkTrack.Checked; };
-            numWorld = new NumericUpDown { Minimum = 1000, Maximum = 8000, Increment = 250, Value = (decimal)U.WorldSize, Width = 80 };
+            numWorld = new NumericUpDown { Minimum = 1000, Maximum = 8000, Increment = 250, Value = (decimal)U.WorldSize, Width = 92 };
             numWorld.ValueChanged += delegate { if (!settingWorld) SetWorldSize((float)numWorld.Value, true); };
-            var wr = new FlowLayoutPanel { AutoSize = true }; wr.Controls.Add(Lbl("World size")); wr.Controls.Add(numWorld);
-            numMargin = new NumericUpDown { Minimum = 0, Maximum = 2000, Increment = 25, Value = cfg.MapMargin, Width = 70 };
+            numMargin = new NumericUpDown { Minimum = 0, Maximum = 2000, Increment = 25, Value = cfg.MapMargin, Width = 92 };
             map.Margin = cfg.MapMargin;
             numMargin.ValueChanged += delegate { map.Margin = (float)numMargin.Value; cfg.MapMargin = (int)numMargin.Value; map.Invalidate(); };
-            var mr = new FlowLayoutPanel { AutoSize = true }; mr.Controls.Add(Lbl("Image edge margin (m)")); mr.Controls.Add(numMargin);
-            lblMapNote = new Label { AutoSize = true, MaximumSize = new Size(260, 0), ForeColor = Theme.Muted, Margin = new Padding(0, 8, 3, 10),
-                Text = "The map is fetched from RustMaps using your server's seed and size, or load your own image. If dots look slightly off, adjust the image edge margin until a player lines up. Scroll to zoom, drag to pan, click a player to select." };
-            opts.Controls.AddRange(new Control[] { chkNames, chkTrack, wr, mr,
-                Btn("Fetch map from RustMaps", async delegate { await FetchRustMaps(false); }),
-                Btn("Set RustMaps API key...", delegate { SetRmKey(); }),
-                Btn("Load map image...", delegate { PickMapImage(); }),
-                Btn("Clear map image", delegate { map.Bg = null; cfg.MapPath = ""; map.Invalidate(); }),
-                Btn("Reset view", delegate { map.ResetView(); }),
-                lblMapNote });
-            side.Controls.Add(lbMapPlayers); side.Controls.Add(opts);
+            var grid = new TableLayoutPanel { ColumnCount = 2, RowCount = 2, AutoSize = true, Margin = new Padding(0, 6, 0, 6) };
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 168)); grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            var l1 = Lbl("World size"); var l2 = Lbl("Image edge margin (m)");
+            l1.Margin = l2.Margin = new Padding(0, 9, 6, 0);
+            numWorld.Margin = numMargin.Margin = new Padding(0, 0, 0, 6);
+            grid.Controls.Add(l1, 0, 0); grid.Controls.Add(numWorld, 1, 0); grid.Controls.Add(l2, 0, 1); grid.Controls.Add(numMargin, 1, 1);
+            lblMapNote = new Label { AutoSize = true, MaximumSize = new Size(262, 0), ForeColor = Theme.Muted, Margin = new Padding(0, 4, 0, 4), Font = Theme.F(8.5f),
+                Text = "Scroll to zoom, drag to pan, click a player to select. If dots look slightly off, adjust the edge margin." };
+            var fetch = Btn("Fetch map from RustMaps", async delegate { await FetchRustMaps(false); });
+            fetch.AutoSize = false; fetch.Size = new Size(262, 34); fetch.Margin = new Padding(0, 2, 0, 8);
+            Func<Button, Button, Control> pair = delegate (Button x, Button y)
+            {
+                var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 0, 0, 8) };
+                x.AutoSize = y.AutoSize = false; x.Size = y.Size = new Size(127, 34);
+                x.Margin = new Padding(0, 0, 8, 0); y.Margin = new Padding(0);
+                row.Controls.Add(x); row.Controls.Add(y); return row;
+            };
+            var mapBtns = new Control[] { fetch,
+                pair(Btn("RustMaps key...", delegate { SetRmKey(); }), Btn("Load image...", delegate { PickMapImage(); })),
+                pair(Btn("Reset view", delegate { map.ResetView(); }), Btn("Clear image", delegate { map.Bg = null; cfg.MapPath = ""; map.Invalidate(); })) };
+            chkNames.Margin = chkTrack.Margin = new Padding(0, 0, 0, 6);
+            opts.Controls.AddRange(new Control[] { chkNames, chkTrack, grid });
+            opts.Controls.AddRange(mapBtns);
+            opts.Controls.Add(lblMapNote);
+            optCard.Controls.Add(opts);
+            opts.SizeChanged += delegate { optCard.Height = opts.Height + 36 + optCard.Padding.Bottom + 4; };
+            var listCard = Theme.Framed(lbMapPlayers, "Players on map");
+            listCard.Glyph = "\uE716"; listCard.Dock = DockStyle.Fill;
+            side.Controls.Add(listCard); side.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 14 }); side.Controls.Add(optCard);
 
             tabMap.Controls.Add(map); tabMap.Controls.Add(side);
         }
@@ -1354,7 +1921,7 @@ namespace JetsAdminPanel
         void BuildConsole()
         {
             rtbConsole = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, BackColor = Theme.Input, ForeColor = Theme.Text, Font = new Font("Consolas", 9.5f), WordWrap = true, HideSelection = false };
-            var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(0, 10, 0, 0) };
+            var bottom = new Panel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(0, 12, 0, 0) };
             txtCmd = new TextBox { Dock = DockStyle.Fill, Font = new Font("Consolas", 10f) };
             txtCmd.KeyDown += async delegate (object s, KeyEventArgs e)
             {
@@ -1368,8 +1935,8 @@ namespace JetsAdminPanel
                 else if (e.KeyCode == Keys.Up && history.Count > 0) { histIdx = Math.Max(0, histIdx - 1); txtCmd.Text = history[histIdx]; txtCmd.SelectionStart = txtCmd.TextLength; e.SuppressKeyPress = true; }
                 else if (e.KeyCode == Keys.Down && history.Count > 0) { histIdx = Math.Min(history.Count, histIdx + 1); txtCmd.Text = histIdx < history.Count ? history[histIdx] : ""; txtCmd.SelectionStart = txtCmd.TextLength; e.SuppressKeyPress = true; }
             };
-            var right = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, WrapContents = false };
-            chkScroll = new CheckBox { Text = "Auto-scroll", Checked = true, AutoSize = true, Margin = new Padding(6, 6, 3, 0) };
+            var right = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, WrapContents = false, Padding = new Padding(10, 0, 0, 0) };
+            chkScroll = new CheckBox { Text = "Auto-scroll", Checked = true, AutoSize = true, Margin = new Padding(6, 4, 10, 0) };
             right.Controls.Add(chkScroll);
             right.Controls.Add(Btn("Clear", delegate { rtbConsole.Clear(); }));
             right.Controls.Add(Btn("Save log...", delegate
@@ -1378,15 +1945,13 @@ namespace JetsAdminPanel
                     if (d.ShowDialog() == DialogResult.OK) File.WriteAllText(d.FileName, rtbConsole.Text);
             }));
             bottom.Controls.Add(txtCmd); bottom.Controls.Add(right);
-            var chost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Input, Padding = new Padding(14, 10, 8, 8) };
-            chost.Controls.Add(rtbConsole);
-            tabConsole.Controls.Add(chost); tabConsole.Controls.Add(bottom);
+            tabConsole.Controls.Add(rtbConsole); tabConsole.Controls.Add(bottom);
         }
 
         void BuildChat()
         {
             rtbChat = new RichTextBox { Dock = DockStyle.Fill, ReadOnly = true, Font = new Font("Segoe UI", 10.5f), HideSelection = false, BackColor = Theme.Input, ForeColor = Theme.Text };
-            var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44, Padding = new Padding(0, 10, 0, 0) };
+            var bottom = new Panel { Dock = DockStyle.Bottom, Height = 46, Padding = new Padding(0, 12, 0, 0) };
             txtChatSend = new TextBox { Dock = DockStyle.Fill };
             txtChatSend.KeyDown += async delegate (object s, KeyEventArgs e)
             {
@@ -1402,11 +1967,9 @@ namespace JetsAdminPanel
                 if (txtChatSend.Text.Trim().Length == 0) return;
                 string t = txtChatSend.Text; txtChatSend.Clear(); await Run("say " + U.Q(t));
             });
-            send.Dock = DockStyle.Right;
-            bottom.Controls.Add(txtChatSend); bottom.Controls.Add(send);
-            var thost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Input, Padding = new Padding(16, 12, 10, 8) };
-            thost.Controls.Add(rtbChat);
-            tabChat.Controls.Add(thost); tabChat.Controls.Add(bottom);
+            send.Dock = DockStyle.Right; send.AutoSize = false; send.Width = 150;
+            bottom.Controls.Add(txtChatSend); bottom.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 10 }); bottom.Controls.Add(send);
+            tabChat.Controls.Add(rtbChat); tabChat.Controls.Add(bottom);
         }
 
         void BuildBans()
@@ -1427,7 +1990,7 @@ namespace JetsAdminPanel
             }));
             lvBans = MakeList("SteamID", "Name", "Expiry", "Reason");
             lvBans.Columns[0].Width = 170; lvBans.Columns[1].Width = 220; lvBans.Columns[2].Width = 120;
-            tabBans.Controls.Add(lvBans); tabBans.Controls.Add(bar);
+            tabBans.Controls.Add(Theme.Framed(lvBans, null)); tabBans.Controls.Add(bar);
         }
 
         void BuildServer()
@@ -1449,7 +2012,7 @@ namespace JetsAdminPanel
                 try { it.SubItems[1].Text = U.ConvarValue(await rc.Cmd(it.Text)); } catch { }
             };
 
-            var ev = new Card { Text = "Environment && events", Dock = DockStyle.Right, Width = 310, Padding = new Padding(14, 0, 14, 12) };
+            var ev = new Card { Text = "Environment && events", Glyph = "\uE706", Dock = DockStyle.Right, Width = 316, Padding = new Padding(16, 0, 14, 12) };
             var f = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
             f.Controls.Add(Btn("Set time to morning (8)", async delegate { await Run("env.time 8"); }));
             f.Controls.Add(Btn("Set time to noon (12)", async delegate { await Run("env.time 12"); }));
@@ -1462,36 +2025,41 @@ namespace JetsAdminPanel
             f.Controls.Add(new Label { Text = " ", AutoSize = true });
             f.Controls.Add(Btn("Print server stats (stats)", async delegate { await Run("stats"); tabs.SelectedTab = tabConsole; }));
             f.Controls.Add(Btn("Print server info (serverinfo)", async delegate { await Run("serverinfo"); tabs.SelectedTab = tabConsole; }));
-            foreach (Control c in f.Controls) if (c is Button) { c.Width = 270; ((Button)c).AutoSize = false; c.Height = 32; }
+            foreach (Control c in f.Controls) if (c is Button) { ((Button)c).AutoSize = false; c.Width = 282; c.Height = 34; c.Margin = new Padding(0, 0, 0, 8); }
             ev.Controls.Add(f);
 
-            tabServer.Controls.Add(lvVars); tabServer.Controls.Add(ev); tabServer.Controls.Add(bar);
+            tabServer.Controls.Add(Theme.Framed(lvVars, null)); tabServer.Controls.Add(new Panel { Dock = DockStyle.Right, Width = 14 }); tabServer.Controls.Add(ev); tabServer.Controls.Add(bar);
         }
 
         void BuildScheduler()
         {
-            var p = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(14), AutoScroll = true };
+            var p = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 4, 0, 0), AutoScroll = true };
             chkSchedOn = new CheckBox { Text = "Enable scheduled restarts from this panel (only runs while the panel is open and connected)", AutoSize = true, Checked = cfg.SchedEnabled };
             txtSchedTimes = new TextBox { Width = 420, Text = cfg.SchedTimes };
             txtSchedWarn = new TextBox { Width = 420, Text = cfg.SchedWarn };
             txtSchedMsg = new TextBox { Width = 420, Text = cfg.SchedMsg };
             txtSchedReason = new TextBox { Width = 420, Text = cfg.SchedReason };
-            lblNext = new Label { AutoSize = true, Font = Theme.F(13f, FontStyle.Bold), ForeColor = Theme.Accent, Margin = new Padding(3, 14, 3, 4), Text = "Next restart: -" };
-            lblUpcoming = new Label { AutoSize = true, ForeColor = Theme.Muted, Text = "" };
+            lblNext = new Label { AutoSize = true, Font = Theme.F(13f, FontStyle.Bold), ForeColor = Theme.Accent, Margin = new Padding(0, 18, 3, 4), Text = "Next restart: -" };
+            lblUpcoming = new Label { AutoSize = true, ForeColor = Theme.Muted, Text = "", Margin = new Padding(0, 0, 0, 0) };
             p.Controls.Add(chkSchedOn);
             p.Controls.Add(Lbl("Restart times, daily, in server UTC (HH:mm, comma separated)")); p.Controls.Add(txtSchedTimes);
             p.Controls.Add(Lbl("Warn this many minutes before (comma separated)")); p.Controls.Add(txtSchedWarn);
             p.Controls.Add(Lbl("Warning message ({time} = e.g. \"5 minutes\")")); p.Controls.Add(txtSchedMsg);
             p.Controls.Add(Lbl("Restart reason (shown by the server countdown)")); p.Controls.Add(txtSchedReason);
-            var row = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
+            var row = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 16, 0, 0) };
             row.Controls.Add(Btn("Apply && save", delegate { ApplySchedule(); }));
             row.Controls.Add(Btn("Send test warning", async delegate { await Run("say " + U.Q(txtSchedMsg.Text.Replace("{time}", "5 minutes") + " (test)")); }));
             row.Controls.Add(Btn("Reload JetsScheduledRestart plugin", async delegate { await Run("o.reload JetsScheduledRestart"); await RefreshPlugins(); }));
             p.Controls.Add(row);
             p.Controls.Add(lblNext); p.Controls.Add(lblUpcoming);
-            p.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(640, 0), ForeColor = Color.DimGray, Margin = new Padding(3, 14, 3, 3),
+            p.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(640, 0), ForeColor = Color.DimGray, Margin = new Padding(0, 16, 3, 3),
                 Text = "Warnings are sent as server chat. At 60 seconds before the restart the panel runs the server's own 'restart' countdown. For restarts that must happen while no admin is online, keep using your server-side restarter plugin; this scheduler is for when the panel is left running. Don't run both for the same time or players will get duplicate warnings." });
-            tabSched.Controls.Add(p);
+            foreach (Control c in p.Controls) { Label lb = c as Label; if (lb != null && lb != lblNext && lb != lblUpcoming && lb.Margin.Top == 9) lb.Margin = new Padding(0, 12, 0, 6); }
+            chkSchedOn.Margin = new Padding(0, 0, 0, 6);
+            foreach (var t in new TextBox[] { txtSchedTimes, txtSchedWarn, txtSchedMsg, txtSchedReason }) { t.Width = 460; t.Margin = new Padding(0); }
+            var card = Theme.Framed(p, "Restart schedule");
+            card.Glyph = "\uE823"; card.Padding = new Padding(18, 0, 18, 14); card.Dock = DockStyle.Fill;
+            tabSched.Controls.Add(card);
         }
 
         static List<TimeSpan> ParseTimes(string s)
@@ -1569,7 +2137,7 @@ namespace JetsAdminPanel
             lvPlugins = MakeList("Plugin", "Version", "Author", "File");
             lvPlugins.Columns[0].Width = 220; lvPlugins.Columns[1].Width = 80; lvPlugins.Columns[2].Width = 140; lvPlugins.Columns[3].Width = 200;
 
-            var perm = new Card { Text = "Oxide permissions", Dock = DockStyle.Bottom, Height = 270, Padding = new Padding(14, 0, 14, 12) };
+            var perm = new Card { Text = "Oxide permissions", Glyph = "\uE72E", Dock = DockStyle.Bottom, Height = 280, Padding = new Padding(16, 0, 16, 14) };
             var top = Bar();
             rbUser = new RadioButton { Text = "User (SteamID)", Checked = true, AutoSize = true };
             rbGroup = new RadioButton { Text = "Group", AutoSize = true };
@@ -1586,7 +2154,7 @@ namespace JetsAdminPanel
             txtPermOut = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Font = new Font("Consolas", 9f) };
             perm.Controls.Add(txtPermOut); perm.Controls.Add(top);
 
-            tabPlugins.Controls.Add(lvPlugins); tabPlugins.Controls.Add(perm); tabPlugins.Controls.Add(bar);
+            tabPlugins.Controls.Add(Theme.Framed(lvPlugins, null)); tabPlugins.Controls.Add(new Panel { Dock = DockStyle.Bottom, Height = 14 }); tabPlugins.Controls.Add(perm); tabPlugins.Controls.Add(bar);
         }
 
         // ---------------------------------------------------------- connection
@@ -1595,7 +2163,7 @@ namespace JetsAdminPanel
         void SetConnectedUi(bool on)
         {
             btnConnect.Text = on ? "Disconnect" : "Connect"; Theme.StyleButton(btnConnect, on ? "danger" : "primary"); tabs.SetStatus(on, on ? "Connected" : "Offline");
-            txtHost.Enabled = txtPort.Enabled = txtPw.Enabled = !on;
+            foreach (var t in new TextBox[] { txtHost, txtPort, txtPw }) { t.ReadOnly = on; t.TabStop = !on; t.ForeColor = on ? Theme.Muted : Theme.Text; }
         }
 
         void ToggleConnect()
@@ -1888,7 +2456,7 @@ namespace JetsAdminPanel
         {
             var sel = SelPlayers(); if (sel.Count == 0) return;
             if (!U.Confirm("Grant " + (cmd == "ownerid" ? "OWNER" : "moderator") + " to " + string.Join(", ", sel.Select(p => p.Name).ToArray()) + "?")) return;
-            foreach (var p in sel) await Run(cmd + " " + p.Id + " " + U.Q(p.Name) + " " + U.Q("Added by Jets Admin Panel"));
+            foreach (var p in sel) await Run(cmd + " " + p.Id + " " + U.Q(p.Name) + " " + U.Q("Added by Jets Rust Admin"));
             await Run("server.writecfg");
         }
         async void ActRemoveRole()
@@ -2025,7 +2593,7 @@ namespace JetsAdminPanel
         static string HttpGetText(string url, Action<HttpWebRequest> setup)
         {
             var req = (HttpWebRequest)WebRequest.Create(url);
-            req.UserAgent = "JetsAdminPanel/1.0"; req.Accept = "application/json"; req.Timeout = 20000;
+            req.UserAgent = "JetsRustAdmin/1.0"; req.Accept = "application/json"; req.Timeout = 20000;
             if (setup != null) setup(req);
             using (var resp = (HttpWebResponse)req.GetResponse())
             using (var sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
@@ -2057,7 +2625,7 @@ namespace JetsAdminPanel
                     throw new Exception("RustMaps returned HTTP " + code + ". " + (body.Length > 200 ? body.Substring(0, 200) : body));
                 }
             }
-            if (json == null) throw new Exception("RustMaps rejected the API key (HTTP 401/403). Check the key with 'Set RustMaps API key...'.");
+            if (json == null) throw new Exception("RustMaps rejected the API key (HTTP 401/403). Check the key with 'RustMaps key...' on the Live Map page.");
             object o = U.Parse(json);
             string img = U.FindStr(o, "rawImageUrl") ?? U.FindStr(o, "imageUrl");
             if (img == null)
@@ -2066,7 +2634,7 @@ namespace JetsAdminPanel
                 throw new Exception("RustMaps replied but no image URL was found. Reply began: " + snippet);
             }
             var req = (HttpWebRequest)WebRequest.Create(img);
-            req.UserAgent = "JetsAdminPanel/1.0"; req.Timeout = 60000;
+            req.UserAgent = "JetsRustAdmin/1.0"; req.Timeout = 60000;
             using (var resp = (HttpWebResponse)req.GetResponse())
             using (var st = resp.GetResponseStream())
             using (var ms = new MemoryStream())
@@ -2101,8 +2669,9 @@ namespace JetsAdminPanel
     // Checks the GitHub repository's latest release and swaps in the new exe (same pattern as Jet's Server Messenger).
     static class Updater
     {
+        // Releases still come from the existing JetsAdminPanel repo (GitHub redirects it if the repo is renamed later).
         public const string Repository = "pilotdave1970/JetsAdminPanel";
-        public const string AssetName = "JetsAdminPanel.exe";
+        public const string AssetName = "JetsRustAdmin.exe";
 
         public class Info { public Version Version; public string Url; public string Notes; }
 
@@ -2115,7 +2684,7 @@ namespace JetsAdminPanel
         {
             try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | (SecurityProtocolType)768 | SecurityProtocolType.Tls; } catch { }
             var r = (HttpWebRequest)WebRequest.Create(url);
-            r.UserAgent = "JetsAdminPanel/" + Current; r.Timeout = 20000; r.ReadWriteTimeout = 60000; r.AllowAutoRedirect = true;
+            r.UserAgent = "JetsRustAdmin/" + Current; r.Timeout = 20000; r.ReadWriteTimeout = 60000; r.AllowAutoRedirect = true;
             return r;
         }
 
@@ -2146,7 +2715,7 @@ namespace JetsAdminPanel
         public static void Install(Info up)
         {
             string exe = Application.ExecutablePath, old = exe + ".old";
-            string tmp = Path.Combine(Path.GetTempPath(), "JetsAdminPanel-" + Guid.NewGuid().ToString("N") + ".exe");
+            string tmp = Path.Combine(Path.GetTempPath(), "JetsRustAdmin-" + Guid.NewGuid().ToString("N") + ".exe");
             using (var resp = Req(up.Url).GetResponse())
             using (var rs = resp.GetResponseStream())
             using (var fs = File.Create(tmp)) rs.CopyTo(fs);
@@ -2157,7 +2726,7 @@ namespace JetsAdminPanel
             catch { File.Move(old, exe); throw; }
             try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true }); }
             catch { try { File.Delete(exe); File.Move(old, exe); } catch { } throw; }
-            try { using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\JetsAdminPanel", true)) if (k != null) k.SetValue("DisplayVersion", up.Version.ToString()); } catch { }
+            try { using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\JetsRustAdmin", true)) if (k != null) k.SetValue("DisplayVersion", up.Version.ToString()); } catch { }
         }
 
         public static void CleanUp() { try { string o = Application.ExecutablePath + ".old"; if (File.Exists(o)) File.Delete(o); } catch { } }
