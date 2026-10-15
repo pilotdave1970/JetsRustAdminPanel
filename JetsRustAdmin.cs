@@ -22,8 +22,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Jets Rust Admin")]
 [assembly: AssemblyProduct("Jets Rust Admin")]
-[assembly: AssemblyVersion("2.0.0.0")]
-[assembly: AssemblyFileVersion("2.0.0.0")]
+[assembly: AssemblyVersion("2.0.1.0")]
+[assembly: AssemblyFileVersion("2.0.1.0")]
 
 namespace JetsRustAdmin
 {
@@ -2769,8 +2769,7 @@ namespace JetsRustAdmin
     // Checks the GitHub repository's latest release and swaps in the new exe (same pattern as Jet's Server Messenger).
     static class Updater
     {
-        // Releases still come from the existing JetsAdminPanel repo (GitHub redirects it if the repo is renamed later).
-        public const string Repository = "pilotdave1970/JetsAdminPanel";
+        public const string Repository = "pilotdave1970/JetsRustAdminPanel";
         public const string AssetName = "JetsRustAdmin.exe";
 
         public class Info { public Version Version; public string Url; public string Notes; }
