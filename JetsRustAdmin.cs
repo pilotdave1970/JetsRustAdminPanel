@@ -496,7 +496,7 @@ namespace JetsRustAdmin
                 using (var br = new SolidBrush(Color.FromArgb(190, 13, 17, 23))) g.FillPath(br, path);
                 g.DrawString(info, f, Brushes.WhiteSmoke, 17, Height - 34);
             }
-            Gfx.MaskCorners(g, ClientRectangle, Theme.RCard, Gfx.BackOf(this), Theme.Border);
+            Gfx.MaskCorners(g, ClientRectangle, Theme.RCard, Gfx.BackOf(this), Theme.BoxBorder);
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
@@ -708,6 +708,7 @@ namespace JetsRustAdmin
         public static readonly Color Surface2 = Color.FromArgb(31, 38, 48);
         public static readonly Color Input = Color.FromArgb(13, 17, 23);
         public static readonly Color Border = Color.FromArgb(44, 52, 64);
+        public static readonly Color BoxBorder = Color.FromArgb(214, 112, 48);   // orange outline for cards and panels
         public static readonly Color Hover = Color.FromArgb(40, 49, 61);
         public static readonly Color Text = Color.FromArgb(232, 238, 244);
         public static readonly Color Muted = Color.FromArgb(138, 151, 167);
@@ -1135,7 +1136,7 @@ namespace JetsRustAdmin
             using (var path = Gfx.Round(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), Theme.RCard))
             {
                 using (var br = new SolidBrush(BackColor)) g.FillPath(br, path);
-                using (var pen = new Pen(Theme.Border)) g.DrawPath(pen, path);
+                using (var pen = new Pen(Theme.BoxBorder)) g.DrawPath(pen, path);
             }
         }
     }
@@ -1236,7 +1237,7 @@ namespace JetsRustAdmin
             using (var path = Gfx.Round(r, Theme.RCard))
             {
                 using (var br = new SolidBrush(BackColor)) g.FillPath(br, path);
-                using (var pen = new Pen(Theme.Border)) g.DrawPath(pen, path);
+                using (var pen = new Pen(Theme.BoxBorder)) g.DrawPath(pen, path);
             }
             int tx = 16;
             if (TitleH > 0 && Glyph.Length > 0 && Gfx.HasIconFont)
