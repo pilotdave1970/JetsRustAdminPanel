@@ -52,6 +52,7 @@ namespace JetsRustAdmin
         public int WorldSize = 0;
         public string RmKeyEnc = "";
         public int MapMargin = 0;
+        public string ThemeName = "Orange";
         public static string MapDir { get { return Path.Combine(Dir, "maps"); } }
 
         public static string Dir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JetsRustAdmin"); } }
@@ -708,16 +709,16 @@ namespace JetsRustAdmin
         public static readonly Color Surface2 = Color.FromArgb(31, 38, 48);
         public static readonly Color Input = Color.FromArgb(13, 17, 23);
         public static readonly Color Border = Color.FromArgb(44, 52, 64);
-        public static readonly Color BoxBorder = Color.FromArgb(214, 112, 48);   // orange outline for cards and panels
+        public static Color BoxBorder = Color.FromArgb(214, 112, 48);   // orange outline for cards and panels
         public static readonly Color Hover = Color.FromArgb(40, 49, 61);
         public static readonly Color Text = Color.FromArgb(232, 238, 244);
         public static readonly Color Muted = Color.FromArgb(138, 151, 167);
         public static readonly Color Faint = Color.FromArgb(84, 95, 110);
-        public static readonly Color Accent = Color.FromArgb(240, 128, 56);
-        public static readonly Color AccentHover = Color.FromArgb(252, 152, 84);
-        public static readonly Color AccentDown = Color.FromArgb(206, 104, 40);
-        public static readonly Color AccentInk = Color.FromArgb(32, 14, 4);
-        public static readonly Color AccentSoft = Color.FromArgb(62, 36, 20);
+        public static Color Accent = Color.FromArgb(240, 128, 56);
+        public static Color AccentHover = Color.FromArgb(252, 152, 84);
+        public static Color AccentDown = Color.FromArgb(206, 104, 40);
+        public static Color AccentInk = Color.FromArgb(32, 14, 4);
+        public static Color AccentSoft = Color.FromArgb(62, 36, 20);
         public static readonly Color Danger = Color.FromArgb(229, 83, 75);
         public static readonly Color DangerText = Color.FromArgb(255, 123, 114);
         public static readonly Color DangerSoft = Color.FromArgb(52, 28, 32);
@@ -725,7 +726,28 @@ namespace JetsRustAdmin
         public static readonly Color Ok = Color.FromArgb(63, 185, 80);
         public static readonly Color Info = Color.FromArgb(88, 166, 255);
         public static readonly Color RowAlt = Color.FromArgb(24, 30, 38);
-        public static readonly Color Select = Color.FromArgb(86, 48, 24);
+        public static Color Select = Color.FromArgb(86, 48, 24);
+
+        // Colour themes picked from the sidebar. Every highlight colour is derived from the one accent.
+        public static readonly string[] ThemeNames = { "Orange", "Green", "Blue", "Purple", "Red", "Teal", "Gold", "Pink" };
+        public static readonly Color[] ThemeColors = {
+            Color.FromArgb(240, 128, 56), Color.FromArgb(47, 191, 143), Color.FromArgb(74, 158, 255), Color.FromArgb(160, 118, 255),
+            Color.FromArgb(236, 84, 84), Color.FromArgb(34, 196, 214), Color.FromArgb(230, 182, 52), Color.FromArgb(238, 98, 164) };
+        public static string ThemeName = "Orange";
+
+        public static void SetTheme(string name)
+        {
+            int i = Array.IndexOf(ThemeNames, name); if (i < 0) i = 0;
+            ThemeName = ThemeNames[i];
+            Color a = ThemeColors[i];
+            Accent = a;
+            AccentHover = Gfx.Mix(a, Color.White, 0.18f);
+            AccentDown = Gfx.Mix(a, Color.Black, 0.15f);
+            AccentInk = Gfx.Mix(a, Color.Black, 0.86f);
+            AccentSoft = Gfx.Mix(Surface, a, 0.22f);
+            Select = Gfx.Mix(Surface, a, 0.36f);
+            BoxBorder = Gfx.Mix(a, Color.Black, 0.12f);
+        }
 
         public const float RCard = 12f, RCtl = 8f;
         public const string IconFontName = "Segoe MDL2 Assets";
@@ -1309,6 +1331,7 @@ namespace JetsRustAdmin
         }
         public int Selected { get { return sel; } }
         public void SetStatus(bool ok, string text) { bar.Online = ok; bar.StatusText = text; bar.Invalidate(); }
+        public event Action<string> ThemeChosen { add { bar.ThemeChosen += value; } remove { bar.ThemeChosen -= value; } }
         public void AddPage(Page p)
         {
             p.Dock = DockStyle.Fill; host.Controls.Add(p); Pages.Add(p);
@@ -1331,6 +1354,9 @@ namespace JetsRustAdmin
         int hover = -1;
         public bool Online;
         public string StatusText = "Offline";
+        public event Action<string> ThemeChosen;
+        int hoverSwatch = -1;
+        readonly ToolTip tip = new ToolTip();
         Image logo;
         const int ItemH = 42, Gap = 4, Top0 = 92;
 
@@ -1343,6 +1369,12 @@ namespace JetsRustAdmin
         }
         Rectangle ItemRect(int i) { return new Rectangle(12, Top0 + i * (ItemH + Gap), Width - 25, ItemH); }
         int HitTest(Point p) { for (int i = 0; i < owner.Pages.Count; i++) if (ItemRect(i).Contains(p)) return i; return -1; }
+        Rectangle SwatchRect(int i)
+        {
+            int n = Theme.ThemeNames.Length, size = 20, gap = (Width - 36 - n * size) / Math.Max(1, n - 1);
+            return new Rectangle(18 + i * (size + gap), Height - 92, size, size);
+        }
+        int SwatchHit(Point p) { for (int i = 0; i < Theme.ThemeNames.Length; i++) { var r = SwatchRect(i); r.Inflate(3, 3); if (r.Contains(p)) return i; } return -1; }
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -1355,7 +1387,7 @@ namespace JetsRustAdmin
             var lr = new Rectangle(18, 22, 40, 40);
             using (var path = Gfx.Round(lr, 11))
             {
-                using (var br = new LinearGradientBrush(lr, Color.FromArgb(250, 146, 70), Color.FromArgb(190, 86, 30), 45f)) g.FillPath(br, path);
+                using (var br = new LinearGradientBrush(lr, Theme.AccentHover, Gfx.Mix(Theme.Accent, Color.Black, 0.25f), 45f)) g.FillPath(br, path);
                 if (logo != null) { var clip = g.Clip; g.SetClip(path); g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.DrawImage(logo, new Rectangle(lr.X + 4, lr.Y + 4, 32, 32)); g.Clip = clip; }
             }
             using (var f = Theme.F(11.5f, FontStyle.Bold)) TextRenderer.DrawText(g, "Jets Rust Admin", f, new Rectangle(68, 22, Width - 76, 22), Theme.Text, tf);
@@ -1383,6 +1415,18 @@ namespace JetsRustAdmin
                     TextRenderer.DrawText(g, pg.Text.Replace("&&", "&"), f, new Rectangle(r.X + tx, r.Y, r.Width - tx - 6, r.Height), c, tf);
             }
 
+            // theme colour buttons
+            using (var f = Theme.F(7.75f, FontStyle.Bold))
+                TextRenderer.DrawText(g, "THEME  \u00B7  " + Theme.ThemeName.ToUpperInvariant(), f, new Point(18, Height - 118), Theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            for (int i = 0; i < Theme.ThemeNames.Length; i++)
+            {
+                var r = SwatchRect(i);
+                bool cur = Theme.ThemeNames[i] == Theme.ThemeName;
+                if (cur || hoverSwatch == i)
+                    using (var pen = new Pen(cur ? Theme.Text : Theme.Muted, 2f)) g.DrawEllipse(pen, r.X - 3.5f, r.Y - 3.5f, r.Width + 7, r.Height + 7);
+                using (var br = new SolidBrush(Theme.ThemeColors[i])) g.FillEllipse(br, r);
+            }
+
             // connection pill at the bottom
             var pr = new Rectangle(12, Height - 58, Width - 25, 42);
             using (var path = Gfx.Round(pr, 21))
@@ -1397,13 +1441,20 @@ namespace JetsRustAdmin
         }
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            int h = HitTest(e.Location);
-            if (h != hover) { hover = h; Cursor = (h >= 0 && owner.Pages[h].Enabled) ? Cursors.Hand : Cursors.Default; Invalidate(); }
+            int h = HitTest(e.Location), sw = SwatchHit(e.Location);
+            if (h != hover || sw != hoverSwatch)
+            {
+                hover = h;
+                if (sw != hoverSwatch) { hoverSwatch = sw; tip.SetToolTip(this, sw >= 0 ? Theme.ThemeNames[sw] + " theme" : ""); }
+                Cursor = (sw >= 0 || (h >= 0 && owner.Pages[h].Enabled)) ? Cursors.Hand : Cursors.Default; Invalidate();
+            }
             base.OnMouseMove(e);
         }
-        protected override void OnMouseLeave(EventArgs e) { hover = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseLeave(EventArgs e) { hover = -1; hoverSwatch = -1; Invalidate(); base.OnMouseLeave(e); }
         protected override void OnMouseDown(MouseEventArgs e)
         {
+            int sw = SwatchHit(e.Location);
+            if (sw >= 0 && e.Button == MouseButtons.Left) { if (ThemeChosen != null) ThemeChosen(Theme.ThemeNames[sw]); base.OnMouseDown(e); return; }
             int h = HitTest(e.Location);
             if (h >= 0 && e.Button == MouseButtons.Left && owner.Pages[h].Enabled) owner.Select(h);
             base.OnMouseDown(e);
@@ -1495,12 +1546,13 @@ namespace JetsRustAdmin
         public MainForm()
         {
             Text = "Jets Rust Admin";
+            Theme.SetTheme(cfg.ThemeName);
             Font = Theme.F(9.25f);
             BackColor = Theme.Bg; ForeColor = Theme.Text;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
             var wa = Screen.PrimaryScreen.WorkingArea;
             Size = new Size(Math.Max(1000, Math.Min(1440, wa.Width - 40)), Math.Max(640, Math.Min(900, wa.Height - 40)));
-            MinimumSize = new Size(1000, 640);
+            MinimumSize = new Size(1000, 700);
             StartPosition = FormStartPosition.CenterScreen;
             U.WorldSize = cfg.WorldSize > 0 ? cfg.WorldSize : 4000f;
 
@@ -1538,6 +1590,12 @@ namespace JetsRustAdmin
             };
             Theme.Apply(this);
             Updater.CleanUp();
+            tabs.ThemeChosen += delegate (string name)
+            {
+                Theme.SetTheme(name); cfg.ThemeName = Theme.ThemeName; cfg.Save();
+                lblNext.ForeColor = Theme.Accent;
+                RepaintAll(this); Update();
+            };
             Shown += delegate { CheckForUpdates(false); };
             SetConnectedUi(false);
             ActiveControl = btnConnect;
@@ -1545,6 +1603,12 @@ namespace JetsRustAdmin
         }
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Theme.DarkTitle(this); }
+
+        static void RepaintAll(Control c)
+        {
+            c.Invalidate();
+            foreach (Control k in c.Controls) RepaintAll(k);
+        }
 
         // ---------------------------------------------------------- UI building
         static Button Btn(string text, EventHandler click)
