@@ -22,8 +22,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Jets Rust Admin")]
 [assembly: AssemblyProduct("Jets Rust Admin")]
-[assembly: AssemblyVersion("2.0.1.0")]
-[assembly: AssemblyFileVersion("2.0.1.0")]
+[assembly: AssemblyVersion("2.0.2.0")]
+[assembly: AssemblyFileVersion("2.0.2.0")]
 
 namespace JetsRustAdmin
 {
@@ -1531,7 +1531,7 @@ namespace JetsRustAdmin
         // connection bar
         TextBox txtHost, txtPort, txtPw;
         CheckBox chkRemember, chkAuto;
-        Button btnConnect;
+        Button btnConnect, btnUpdate;
         Label lblStatus;
         NavTabs tabs;
         Page tabDash, tabPlayers, tabMap, tabConsole, tabChat, tabBans, tabServer, tabPlugins;
@@ -1670,7 +1670,8 @@ namespace JetsRustAdmin
             var saveBtn = Btn("Save", delegate { SaveProfile(); });
             var delBtn = Btn("Delete", delegate { DeleteProfile(); });
             var div = new Panel { Width = 1, Height = 30, BackColor = Theme.Border, Margin = new Padding(6, 1, 14, 0) };
-            bar.Controls.AddRange(new Control[] { Lbl("PROFILE"), cmbProfile, saveBtn, delBtn, div, Lbl("HOST"), txtHost, Lbl("PORT"), txtPort, Lbl("PASSWORD"), txtPw, btnConnect, chkRemember, chkAuto });
+            btnUpdate = Btn("Check for updates", delegate { if (pendingUpdate != null) OfferUpdate(pendingUpdate); else CheckForUpdates(true); });
+            bar.Controls.AddRange(new Control[] { Lbl("PROFILE"), cmbProfile, saveBtn, delBtn, div, Lbl("HOST"), txtHost, Lbl("PORT"), txtPort, Lbl("PASSWORD"), txtPw, btnConnect, chkRemember, chkAuto, btnUpdate });
             foreach (Control c in bar.Controls)
             {
                 Label lb = c as Label;
@@ -1681,6 +1682,7 @@ namespace JetsRustAdmin
             }
             cmbProfile.Margin = new Padding(0, 1, 8, 2);
             btnConnect.Margin = new Padding(2, 0, 6, 2);
+            btnUpdate.Margin = new Padding(16, 0, 0, 2);
             var head = tabs.Header;
             head.Controls.Add(bar);
             bar.SizeChanged += delegate { head.Height = bar.Height + head.Padding.Vertical; };
@@ -1701,10 +1703,17 @@ namespace JetsRustAdmin
         Updater.Info pendingUpdate;
         string IdleUpdateText { get { return "Check for updates"; } }
 
+        void SetUpdateUi(string text, bool available, bool busy)
+        {
+            tabs.SetUpdate(text, available, busy);
+            btnUpdate.Text = text; btnUpdate.Enabled = !busy;
+            Theme.StyleButton(btnUpdate, available ? "primary" : "normal");
+        }
+
         void CheckForUpdates(bool manual)
         {
             if (updating) return;
-            updating = true; tabs.SetUpdate("Checking...", false, true);
+            updating = true; SetUpdateUi("Checking...", false, true);
             ThreadPool.QueueUserWorkItem(delegate
             {
                 Updater.Info up = null; string err = null;
@@ -1717,8 +1726,8 @@ namespace JetsRustAdmin
         {
             updating = false;
             pendingUpdate = up;
-            if (up != null) tabs.SetUpdate("Update to v" + up.Version, true, false);
-            else tabs.SetUpdate(IdleUpdateText, false, false);
+            if (up != null) SetUpdateUi("Update to v" + up.Version, true, false);
+            else SetUpdateUi(IdleUpdateText, false, false);
             if (err != null) { if (manual) Dlg.Show("Could not check for updates:\n" + err); return; }
             if (up == null) { if (manual) Dlg.Show("You're on the latest version (v" + Updater.Current + ")."); return; }
             OfferUpdate(up);
@@ -1730,7 +1739,7 @@ namespace JetsRustAdmin
             string notes = string.IsNullOrWhiteSpace(up.Notes) ? "" : "\n\n" + up.Notes.Trim();
             if (notes.Length > 800) notes = notes.Substring(0, 800) + "...";
             if (!U.Confirm("Version " + up.Version + " is available (you have v" + Updater.Current + "). Download and install it now?" + notes)) return;
-            updating = true; tabs.SetUpdate("Updating...", false, true);
+            updating = true; SetUpdateUi("Updating...", false, true);
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string e2 = null;
@@ -1740,7 +1749,7 @@ namespace JetsRustAdmin
                     BeginInvoke((Action)delegate
                     {
                         if (e2 == null) { cfg.Save(); if (rc != null) rc.Close(); Environment.Exit(0); }
-                        else { updating = false; tabs.SetUpdate("Update to v" + up.Version, true, false); Dlg.Show("Update failed:\n" + e2); }
+                        else { updating = false; SetUpdateUi("Update to v" + up.Version, true, false); Dlg.Show("Update failed:\n" + e2); }
                     });
                 }
                 catch { }

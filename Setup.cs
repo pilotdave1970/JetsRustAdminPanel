@@ -12,15 +12,15 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Jets Rust Admin Setup")]
 [assembly: AssemblyProduct("Jets Rust Admin")]
-[assembly: AssemblyVersion("2.0.1.0")]
-[assembly: AssemblyFileVersion("2.0.1.0")]
+[assembly: AssemblyVersion("2.0.2.0")]
+[assembly: AssemblyFileVersion("2.0.2.0")]
 
 static class Setup
 {
     const string AppName = "Jets Rust Admin";
     const string AppExe = "JetsRustAdmin.exe";
     const string UninstExe = "Uninstall.exe";
-    const string Version = "2.0.1";
+    const string Version = "2.0.2";
     const string RegPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\JetsRustAdmin";
     const string OldRegPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\JetsAdminPanel";
 
